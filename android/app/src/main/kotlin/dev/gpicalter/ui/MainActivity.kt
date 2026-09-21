@@ -189,8 +189,10 @@ private fun GpicApp() {
         // closing the viewer is instant.
         if (showingQr) {
             PairQrScreen(
-                urls = library.let { server.urls },
+                urls = server.urls,
                 token = container.prefs.token(),
+                httpsUrl = server.httpsUrl,
+                fingerprint = server.tlsFingerprint,
                 onClose = { showingQr = false },
             )
         }
@@ -200,6 +202,10 @@ private fun GpicApp() {
                 prefs = container.prefs,
                 onPaired = { paired ->
                     scanningQr = false
+                    // The pin changed, so the shared HTTP stack has to be rebuilt before any
+                    // request goes out, or the old trust settings would reject the new server.
+                    container.invalidateHttp()
+                    libraryVm.api.invalidateEndpoint()
                     libraryVm.refresh()
                     tab = 0
                     // Explicit confirmation: the previous version simply closed the camera, which

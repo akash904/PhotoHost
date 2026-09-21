@@ -50,7 +50,7 @@ import dev.gpicalter.core.Prefs
 private const val TAG = "gpic"
 
 /** What a pairing QR resolves to. */
-data class PairingInfo(val baseUrl: String, val token: String)
+data class PairingInfo(val baseUrl: String, val token: String, val fingerprint: String? = null)
 
 /**
  * Parses a pairing payload.
@@ -68,7 +68,11 @@ fun parsePairing(raw: String?): PairingInfo? {
         val host = uri.host ?: return null
         val token = uri.getQueryParameter("c")?.takeIf { it.isNotBlank() } ?: return null
         val port = if (uri.port > 0) ":${uri.port}" else ""
-        PairingInfo(baseUrl = "$scheme://$host$port", token = token)
+        // An https payload carries the certificate fingerprint to pin. Its absence on an https URL
+        // is not fatal, but it means falling back to platform trust, which will reject a
+        // self-signed certificate -- so it is surfaced rather than silently accepted.
+        val fingerprint = uri.getQueryParameter("f")?.takeIf { it.length == 64 }
+        PairingInfo("$scheme://$host$port", token, fingerprint)
     } catch (t: Throwable) {
         null
     }
@@ -137,6 +141,10 @@ fun ScanQrScreen(prefs: Prefs, onPaired: (String) -> Unit, onClose: () -> Unit) 
                                         handled = true
                                         prefs.serverUrl = info.baseUrl
                                         prefs.remoteToken = info.token
+                                        prefs.serverFingerprint = info.fingerprint
+                                        // Candidates from a previous server would be probed and
+                                        // could silently win, pointing the app at the old library.
+                                        prefs.serverCandidates = emptyList()
                                         status = "Paired with ${info.baseUrl}"
                                         provider.unbindAll()
                                         onPaired(info.baseUrl)

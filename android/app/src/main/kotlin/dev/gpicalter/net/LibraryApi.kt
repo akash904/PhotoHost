@@ -5,6 +5,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.timeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -29,30 +30,111 @@ import kotlinx.serialization.json.Json
  * the base URL is loopback. That keeps a single browsing code path, so the server phone exercises
  * exactly the same client the laptop does and local-only bugs cannot hide.
  */
-class LibraryApi(private val prefs: Prefs) {
+class LibraryApi(
+    private val prefs: Prefs,
+    /** Supplied lazily because the pinned stack is built from prefs this class also reads. */
+    private val httpStack: () -> okhttp3.OkHttpClient,
+) {
 
     private val json = Json {
         ignoreUnknownKeys = true
         explicitNulls = false
     }
 
-    val client: HttpClient = HttpClient(OkHttp) {
-        expectSuccess = false
-        install(ContentNegotiation) { json(json) }
-        install(HttpTimeout) {
-            // Generous: the server is a phone that may be busy thumbnailing a backlog.
-            requestTimeoutMillis = 30_000
-            connectTimeoutMillis = 10_000
-            socketTimeoutMillis = 30_000
+    /**
+     * Rebuilt whenever the certificate pin changes.
+     *
+     * This was a plain `val` and it was a real bug: the Ktor client captures its engine at
+     * construction, and this class is created lazily -- in practice before the user has paired.
+     * The pin was therefore fixed as "none" forever, and pairing with a TLS server afterwards
+     * failed with "trust anchor not found" even though the fingerprint had been stored correctly.
+     */
+    @Volatile
+    private var cached: Pair<String?, HttpClient>? = null
+
+    val client: HttpClient
+        get() {
+            val pin = prefs.serverFingerprint
+            cached?.let { (cachedPin, existing) -> if (cachedPin == pin) return existing }
+            val fresh = HttpClient(OkHttp) {
+                engine { preconfigured = httpStack() }
+                expectSuccess = false
+                install(ContentNegotiation) { json(json) }
+                install(HttpTimeout) {
+                    // Generous: the server is a phone that may be busy thumbnailing a backlog.
+                    requestTimeoutMillis = 30_000
+                    connectTimeoutMillis = 10_000
+                    socketTimeoutMillis = 30_000
+                }
+            }
+            // The old client owns a connection pool and threads; dropping it without closing
+            // leaks both every time the user re-pairs.
+            cached?.second?.let { old -> runCatching { old.close() } }
+            cached = pin to fresh
+            return fresh
         }
-    }
+
+    /**
+     * The address currently known to work.
+     *
+     * Cached because Coil and ExoPlayer build URLs synchronously and cannot wait on a probe, and
+     * because re-testing every candidate per request would add a round trip to each thumbnail.
+     */
+    @Volatile
+    private var activeBase: String? = null
 
     /** Why the last request failed. Without this, every network problem looks identical. */
     @Volatile
     var lastError: String? = null
         private set
 
-    fun baseUrl(): String = prefs.baseUrl()
+    fun baseUrl(): String = activeBase ?: prefs.baseUrl()
+
+    /**
+     * Picks the first candidate that answers, preferring whatever the server listed first -- the
+     * LAN address before a Tailscale one, so being at home does not route through a VPN hop.
+     *
+     * Probes run with a short timeout: an address that is not on this network fails fast by
+     * design, and waiting the full request timeout on each would make startup feel broken.
+     */
+    suspend fun resolveEndpoint(): String {
+        activeBase?.let { return it }
+        val candidates = buildList {
+            prefs.serverUrl?.let { add(it) }
+            addAll(prefs.serverCandidates)
+        }.distinct()
+        if (candidates.isEmpty()) return prefs.baseUrl()
+
+        for (candidate in candidates) {
+            if (reachable(candidate)) {
+                activeBase = candidate
+                return candidate
+            }
+        }
+        // Nothing answered. Keep the preferred address so the error names something meaningful.
+        return candidates.first()
+    }
+
+    /** Forces the next call to re-probe, e.g. after moving between networks. */
+    fun invalidateEndpoint() {
+        activeBase = null
+    }
+
+    private suspend fun reachable(base: String): Boolean = try {
+        val r = client.get("$base/health") {
+            timeout { requestTimeoutMillis = 2_500 }
+        }
+        r.status.isSuccess()
+    } catch (t: Throwable) {
+        false
+    }
+
+    /** Learns the server's other addresses so a later move to another network still works. */
+    suspend fun refreshEndpoints() {
+        val found = getOrNull<List<EndpointDto>>("/api/v1/endpoints") ?: return
+        val urls = found.map { it.url }.filterNot { it.contains("127.0.0.1") }
+        if (urls.isNotEmpty()) prefs.serverCandidates = urls
+    }
 
     fun thumbUrl(assetId: Long, size: String = "grid"): String =
         "${baseUrl()}/api/v1/assets/$assetId/thumb?size=$size"
@@ -358,6 +440,9 @@ data class AssetPatchDto(
     val capturedAtSource: Int? = null,
     val tzOffsetMinutes: Int? = null,
 )
+
+@Serializable
+data class EndpointDto(val label: String = "", val url: String = "")
 
 @Serializable
 data class BucketDto(val bucket: String, val count: Int, val newestCapturedAt: Long)

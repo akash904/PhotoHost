@@ -1,6 +1,7 @@
 package dev.gpicalter.server
 
 import java.net.Inet4Address
+import java.net.Inet6Address
 import java.net.NetworkInterface
 
 /**
@@ -23,16 +24,36 @@ object NetInterfaces {
             for (nif in NetworkInterface.getNetworkInterfaces()) {
                 if (!nif.isUp || nif.isLoopback) continue
                 for (addr in nif.inetAddresses) {
-                    if (addr !is Inet4Address || addr.isLoopbackAddress) continue
-                    val host = addr.hostAddress ?: continue
-                    out += Endpoint(label = labelFor(nif.name), host = host)
+                    if (addr.isLoopbackAddress || addr.isLinkLocalAddress) continue
+                    val raw = addr.hostAddress ?: continue
+                    when (addr) {
+                        is Inet4Address -> out += Endpoint(labelFor(nif.name), raw)
+                        is Inet6Address -> {
+                            // Skip temporary privacy addresses: they rotate every few hours, so
+                            // pairing with one produces a client that mysteriously stops working.
+                            // The EUI-64 address (identifiable by its ff:fe marker) is stable for
+                            // as long as the ISP keeps the same prefix.
+                            if (!raw.contains("ff:fe", ignoreCase = true)) continue
+                            // Strip any %scope suffix and bracket it, as a URL requires.
+                            val host = "[" + raw.substringBefore('%') + "]"
+                            out += Endpoint(labelFor(nif.name) + " (IPv6)", host)
+                        }
+                        else -> continue
+                    }
                 }
             }
         } catch (t: Throwable) {
             // Enumerating interfaces can fail transiently while the network reconfigures.
         }
-        // Tailscale first: it is the address that still works when you are not on the LAN.
-        return out.sortedByDescending { it.label == TAILSCALE }
+        // Order is preference order for the client's failover probe: a LAN IPv4 address first
+        // because it is the fastest path when at home, then anything that also works from outside.
+        return out.sortedBy {
+            when {
+                it.label == TAILSCALE -> 1
+                it.label.contains("IPv6") -> 2
+                else -> 0
+            }
+        }
     }
 
     private fun labelFor(name: String): String = when {

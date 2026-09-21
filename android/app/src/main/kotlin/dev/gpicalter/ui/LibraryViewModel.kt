@@ -47,9 +47,15 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         cursor = null
         hasMore = true
         seen.clear()
-        _state.update { it.copy(items = emptyList(), endpoint = api.baseUrl()) }
-        loadMore()
+        _state.update { it.copy(items = emptyList(), loading = true) }
         viewModelScope.launch {
+            // Re-probe on every refresh: the phone may have moved between Wi-Fi and mobile data
+            // since the last one, which changes which address is reachable.
+            api.invalidateEndpoint()
+            val endpoint = api.resolveEndpoint()
+            _state.update { it.copy(endpoint = endpoint, loading = false) }
+            loadMore()
+            api.refreshEndpoints()
             val buckets = api.buckets()
             _state.update { it.copy(buckets = buckets) }
         }

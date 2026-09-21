@@ -53,6 +53,30 @@ class Prefs(context: Context) {
         get() = p.getString(KEY_SERVER_URL, null)
         set(v) = p.edit().putString(KEY_SERVER_URL, v?.trimEnd('/')).apply()
 
+    /**
+     * Every address the paired server said it answers on, in preference order.
+     *
+     * Stored as an ordered list rather than a set because order is the whole point: try the LAN
+     * address before the Tailscale one, so being at home does not route photos through a VPN hop
+     * for no reason.
+     */
+    var serverCandidates: List<String>
+        get() = p.getString(KEY_CANDIDATES, "").orEmpty()
+            .split('\n')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+        set(v) = p.edit().putString(KEY_CANDIDATES, v.joinToString("\n")).apply()
+
+    /**
+     * SHA-256 of the server's TLS certificate, learned from the pairing QR.
+     *
+     * Present means "trust this one certificate and nothing else". Absent means plain HTTP on a
+     * trusted LAN, where there is no certificate to pin.
+     */
+    var serverFingerprint: String?
+        get() = p.getString(KEY_FINGERPRINT, null)
+        set(v) = p.edit().putString(KEY_FINGERPRINT, v?.lowercase()).apply()
+
     /** Token for a remote server. The local server uses [token] instead. */
     var remoteToken: String?
         get() = p.getString(KEY_REMOTE_TOKEN, null)
@@ -152,6 +176,8 @@ class Prefs(context: Context) {
         const val KEY_TOKEN = "token"
         const val KEY_SERVER_URL = "serverUrl"
         const val KEY_REMOTE_TOKEN = "remoteToken"
+        const val KEY_CANDIDATES = "serverCandidates"
+        const val KEY_FINGERPRINT = "serverFingerprint"
         const val KEY_BACKUP = "backupEnabled"
         const val KEY_BACKUP_WIFI = "backupWifiOnly"
         const val KEY_BACKUP_CHARGING = "backupChargingOnly"

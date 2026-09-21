@@ -19,6 +19,9 @@ import io.ktor.server.application.ApplicationCall
 import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
+import io.ktor.server.application.Application
+import io.ktor.server.application.serverConfig
+import io.ktor.server.engine.connector
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.response.cacheControl
@@ -53,6 +56,8 @@ class HttpServer(
     private val uploads: UploadService,
     private val auth: Auth,
     private val port: Int,
+    private val httpsPort: Int,
+    private val tls: CertStore.Identity?,
     private val openFds: () -> Int,
     private val onScanRequested: () -> Unit,
 ) {
@@ -63,7 +68,18 @@ class HttpServer(
 
     fun start() {
         if (server != null) return
-        server = embeddedServer(CIO, port = port, host = "0.0.0.0") {
+        server = embeddedServer(CIO, serverConfig { module { routes() } }) {
+            // Plain HTTP only. Ktor's CIO engine throws UnsupportedOperationException on an SSL
+            // connector, so TLS is terminated by TlsProxy in front of this and relayed here over
+            // loopback. Only the TLS port should ever be opened to the internet.
+            connector {
+                host = "0.0.0.0"
+                port = this@HttpServer.port
+            }
+        }.also { it.start(wait = false) }
+    }
+
+    private fun Application.routes() {
             install(ContentNegotiation) { json(Json { prettyPrint = true; explicitNulls = false }) }
             routing {
                 get("/health") { call.respond(health()) }
@@ -71,11 +87,18 @@ class HttpServer(
                 // The only place a token legitimately appears in a URL: one hand-off that converts
                 // it into an HttpOnly cookie, so <img> and <video> never carry it.
                 get("/pair") {
+                    val peer = call.request.local.remoteHost
+                    if (auth.isThrottled(peer)) {
+                        call.respond(HttpStatusCode.TooManyRequests, "too many attempts")
+                        return@get
+                    }
                     val candidate = call.request.queryParameters["c"]
                     if (!auth.matches(candidate)) {
+                        auth.recordFailure(peer)
                         call.respond(HttpStatusCode.Unauthorized, "bad pairing token")
                         return@get
                     }
+                    auth.recordSuccess(peer)
                     // SameSite=Lax, deliberately not Strict. Strict withholds the cookie on any
                     // navigation the browser considers externally initiated -- including opening
                     // this very link from another app -- so the redirect right after pairing would
@@ -95,6 +118,28 @@ class HttpServer(
                 get("/") { serveAsset(call, "web/index.html", ContentType.Text.Html) }
                 get("/app.css") { serveAsset(call, "web/app.css", ContentType.Text.CSS) }
                 get("/app.js") { serveAsset(call, "web/app.js", ContentType.Application.JavaScript) }
+
+                /**
+                 * Every address this server answers on.
+                 *
+                 * A phone is reachable at different addresses depending on where the client is:
+                 * the LAN address at home, a Tailscale address away from it. The client pairs once
+                 * via QR and then learns the full set from here, so it can pick whichever works
+                 * instead of being pinned to the one that happened to be encoded in the code.
+                 */
+                get("/api/v1/endpoints") {
+                    if (call.denied()) return@get
+                    val found = NetInterfaces.endpoints()
+                    val plain = found.map { EndpointDto(it.label, it.url(port), secure = false) }
+                    val secure = if (tls == null) {
+                        emptyList()
+                    } else {
+                        found.map {
+                            EndpointDto("${it.label} over TLS", "https://${it.host}:$httpsPort", true)
+                        }
+                    }
+                    call.respond(EndpointsDto(plain + secure, tls?.fingerprint))
+                }
 
                 get("/api/v1/stats") {
                     if (call.denied()) return@get
@@ -412,7 +457,6 @@ class HttpServer(
                 get("/api/v1/fs/read") { serveFsFile(call, headOnly = false) }
                 head("/api/v1/fs/read") { serveFsFile(call, headOnly = true) }
             }
-        }.also { it.start(wait = false) }
     }
 
     fun stop() {
@@ -530,7 +574,18 @@ class HttpServer(
     }
 
     private suspend fun ApplicationCall.denied(): Boolean {
-        if (auth.isPublicPath(this) || auth.isAuthorized(this)) return false
+        val peer = request.local.remoteHost
+        // Checked before the token is even compared, so a throttled caller learns nothing about
+        // whether its guess was close.
+        if (auth.isThrottled(peer)) {
+            respond(HttpStatusCode.TooManyRequests, "too many failed attempts; wait a few minutes")
+            return true
+        }
+        if (auth.isPublicPath(this) || auth.isAuthorized(this)) {
+            auth.recordSuccess(peer)
+            return false
+        }
+        auth.recordFailure(peer)
         val wantsPage = request.headers[HttpHeaders.Accept]?.contains("text/html") == true
         if (wantsPage) {
             response.status(HttpStatusCode.Unauthorized)
@@ -683,6 +738,12 @@ data class TrashItemDto(
     val blurhash: String?,
     val sourceAlbum: String? = null,
 )
+
+@Serializable
+data class EndpointDto(val label: String, val url: String, val secure: Boolean = false)
+
+@Serializable
+data class EndpointsDto(val endpoints: List<EndpointDto>, val tlsFingerprint: String? = null)
 
 @Serializable
 data class RepairResultDto(val examined: Int, val fixed: Int)

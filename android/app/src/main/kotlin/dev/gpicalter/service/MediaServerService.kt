@@ -29,7 +29,9 @@ import dev.gpicalter.media.ThumbnailGenerator
 import dev.gpicalter.probe.ProbeActivity
 import dev.gpicalter.server.Auth
 import dev.gpicalter.server.HttpServer
+import dev.gpicalter.server.CertStore
 import dev.gpicalter.server.NetInterfaces
+import dev.gpicalter.server.TlsProxy
 import dev.gpicalter.server.UploadService
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
@@ -68,6 +70,7 @@ class MediaServerService : Service() {
 
     private var server: HttpServer? = null
     private var runner: JobRunner? = null
+    private var tlsProxy: TlsProxy? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var heartbeats = 0
@@ -153,6 +156,13 @@ class MediaServerService : Service() {
         // Transfers abandoned by a flaky client must not slowly fill internal storage.
         uploads.sweepStale()
 
+        // The certificate has to name every address the server may be reached at, so it is built
+        // from the interfaces as they are right now. If the phone later gains an address the cert
+        // does not cover, clients reaching it by that name will reject the certificate.
+        val sans = NetInterfaces.endpoints().map { it.host.trim('[', ']') }
+        val tls = CertStore(File(filesDir, "tls")).loadOrCreate(sans)
+        if (tls == null) Log.w(TAG, "TLS unavailable; serving plain HTTP only")
+
         val http = HttpServer(
             store = store,
             db = container.db,
@@ -161,11 +171,19 @@ class MediaServerService : Service() {
             uploads = uploads,
             auth = Auth(token),
             port = port,
+            httpsPort = port + 363,
+            tls = tls,
             openFds = { File("/proc/self/fd").list()?.size ?: -1 },
             onScanRequested = { scope.launch { enqueueScan() } },
         )
         http.start()
         server = http
+
+        // Started after the HTTP server, since it relays to it.
+        tls?.let { identity ->
+            val proxy = TlsProxy(identity, listenPort = port + 363, targetPort = port)
+            if (proxy.start(scope)) tlsProxy = proxy
+        }
 
         val urls = NetInterfaces.endpoints().map { "${it.label}: ${it.url(port)}" }
         ServerState.update {
@@ -176,6 +194,14 @@ class MediaServerService : Service() {
                 backend = store.kind.name,
                 urls = urls,
                 token = token,
+                httpsUrl = tls?.let { _ ->
+                    // Prefer an address reachable from outside; a LAN address over TLS still works
+                    // but defeats the point of showing a secure code.
+                    val eps = NetInterfaces.endpoints()
+                    val pick = eps.firstOrNull { it.host.startsWith("[") } ?: eps.firstOrNull()
+                    pick?.let { "https://${it.host}:${port + 363}" }
+                },
+                tlsFingerprint = tls?.fingerprint,
                 error = null,
             )
         }
@@ -242,6 +268,8 @@ class MediaServerService : Service() {
         Log.i(TAG, "service stopping")
         runCatching { server?.stop() }
         server = null
+        runCatching { tlsProxy?.stop() }
+        tlsProxy = null
         runner = null
         releaseLocks()
         scope.cancel()

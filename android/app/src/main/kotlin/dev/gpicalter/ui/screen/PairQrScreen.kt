@@ -47,7 +47,13 @@ import dev.gpicalter.ui.components.Footnote
  * in. A bespoke `gpic://` payload would have needed a second QR for browsers.
  */
 @Composable
-fun PairQrScreen(urls: List<String>, token: String, onClose: () -> Unit) {
+fun PairQrScreen(
+    urls: List<String>,
+    token: String,
+    httpsUrl: String? = null,
+    fingerprint: String? = null,
+    onClose: () -> Unit,
+) {
     val clipboard = LocalClipboardManager.current
     BackHandler { onClose() }
 
@@ -57,7 +63,14 @@ fun PairQrScreen(urls: List<String>, token: String, onClose: () -> Unit) {
             .firstOrNull { !it.contains("127.0.0.1") }
             ?: urls.firstOrNull()?.substringAfter(": ")
     }
-    val payload = remember(base, token) { base?.let { "$it/pair?c=$token" } }
+    // The TLS address is preferred when available: it is the one that is safe to use from outside
+    // the LAN, and the fingerprint travelling in the same code is what lets the app pin it.
+    val payload = remember(base, httpsUrl, token, fingerprint) {
+        when {
+            httpsUrl != null && fingerprint != null -> "$httpsUrl/pair?c=$token&f=$fingerprint"
+            else -> base?.let { "$it/pair?c=$token" }
+        }
+    }
     val qr = remember(payload) { payload?.let { encodeQr(it, 640) } }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -113,7 +126,12 @@ fun PairQrScreen(urls: List<String>, token: String, onClose: () -> Unit) {
                     fontWeight = FontWeight.Medium,
                 )
                 Text(
-                    "Or point any camera at it to sign a browser in.",
+                    if (payload.startsWith("https")) {
+                        "Encrypted, and safe to use from outside your network. A browser will warn " +
+                            "about the certificate once; the app verifies it properly."
+                    } else {
+                        "Or point any camera at it to sign a browser in."
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,

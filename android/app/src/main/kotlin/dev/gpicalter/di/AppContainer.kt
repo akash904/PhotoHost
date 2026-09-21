@@ -11,6 +11,7 @@ import coil3.memory.MemoryCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import dev.gpicalter.data.entity.VolumeEntity
 import dev.gpicalter.net.LibraryApi
+import dev.gpicalter.net.Pinning
 import okhttp3.OkHttpClient
 import dev.gpicalter.storage.InternalStore
 import dev.gpicalter.storage.LibraryStore
@@ -30,25 +31,58 @@ class AppContainer private constructor(context: Context) {
     val db = AppDatabase.get(app)
 
     /** How this app reads a library -- loopback when serving locally, a URL when remote. */
-    val api: LibraryApi by lazy { LibraryApi(prefs) }
+    val api: LibraryApi by lazy { LibraryApi(prefs) { http } }
 
     /**
      * Thumbnails are authenticated like every other route, so the image loader has to carry the
      * token. The header is read per request rather than captured once, because the endpoint can be
      * repointed at a different server without restarting the app.
      */
+    /**
+     * One HTTP stack for everything that talks to the library: the API client, Coil's thumbnails
+     * and ExoPlayer's video. They must share it, or a pinned certificate would be honoured on some
+     * requests and rejected on others, which fails in a way that looks like a broken server.
+     *
+     * Rebuilt whenever the pin changes, since pairing with a different server changes what to trust.
+     */
+    @Volatile
+    private var httpCache: Pair<String?, OkHttpClient>? = null
+
+    val http: OkHttpClient
+        get() {
+            val pin = prefs.serverFingerprint
+            httpCache?.let { (cachedPin, client) -> if (cachedPin == pin) return client }
+            val built = Pinning.clientFor(
+                OkHttpClient.Builder().addInterceptor { chain ->
+                    chain.proceed(
+                        chain.request().newBuilder()
+                            .header("Authorization", api.authHeader())
+                            .build(),
+                    )
+                },
+                pin,
+            )
+            httpCache = pin to built
+            return built
+        }
+
+    /** Drops the cached stack so the next request picks up a new pin. */
+    fun invalidateHttp() {
+        httpCache = null
+    }
+
     val imageLoader: ImageLoader by lazy {
-        val http = OkHttpClient.Builder()
-            .addInterceptor { chain ->
-                chain.proceed(
-                    chain.request().newBuilder()
-                        .header("Authorization", api.authHeader())
-                        .build(),
+        ImageLoader.Builder(app)
+            // Delegating rather than passing `http` directly: Coil memoizes the factory, so a
+            // direct reference would pin the stack that existed at first image load and ignore
+            // any later change of certificate pin.
+            .components {
+                add(
+                    OkHttpNetworkFetcherFactory(
+                        callFactory = { okhttp3.Call.Factory { request -> http.newCall(request) } },
+                    ),
                 )
             }
-            .build()
-        ImageLoader.Builder(app)
-            .components { add(OkHttpNetworkFetcherFactory(callFactory = { http })) }
             .memoryCache { MemoryCache.Builder().maxSizePercent(app, 0.25).build() }
             // Thumbnails are immutable and named by content hash, so caching them on disk is free
             // correctness-wise and saves re-fetching the whole grid on every cold start.

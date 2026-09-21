@@ -24,6 +24,8 @@ object ServerState {
         val lastHeartbeatAt: Long = 0L,
         val error: String? = null,
         val scanNote: String? = null,
+        val httpsUrl: String? = null,
+        val tlsFingerprint: String? = null,
     )
 
     private val _state = MutableStateFlow(Snapshot())

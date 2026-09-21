@@ -85,6 +85,8 @@ dependencies {
     // server needs.
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.cio)
+    // Generates the self-signed certificate the server presents; clients pin its fingerprint.
+    implementation(libs.ktor.network.tls.certificates)
     implementation(libs.ktor.server.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)
 
@@ -101,6 +103,8 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
+    // ExoPlayer defaults to HttpURLConnection, which cannot honour the certificate pin.
+    implementation(libs.androidx.media3.datasource.okhttp)
     implementation(libs.androidx.work.runtime)
 
     // QR pairing. zxing:core is pure Java and generation-only; the scanner side uses CameraX with
