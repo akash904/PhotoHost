@@ -5,8 +5,11 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -188,9 +191,33 @@ fun ViewerScreen(
                                 translationY = if (isCurrent) offset.y else 0f,
                             )
                             .pointerInput(item.id) {
-                                detectTransformGestures { _, pan, zoom, _ ->
-                                    scale = (scale * zoom).coerceIn(1f, 6f)
-                                    offset = if (scale > 1.01f) offset + pan else Offset.Zero
+                                // Hand-rolled rather than detectTransformGestures, which consumes
+                                // every drag the moment it passes touch slop -- including a
+                                // one-finger swipe at 1x, where there is nothing to pan. That ate
+                                // the pager's horizontal gesture and made swiping between photos
+                                // do nothing at all.
+                                //
+                                // Events are consumed only when the gesture is genuinely ours: a
+                                // pinch (two or more pointers), or a drag while already zoomed in.
+                                // Everything else falls through to the pager untouched.
+                                awaitEachGesture {
+                                    awaitFirstDown(requireUnconsumed = false)
+                                    do {
+                                        val event = awaitPointerEvent()
+                                        val pinching = event.changes.size > 1
+                                        val zoomed = scale > 1.01f
+                                        if (pinching || zoomed) {
+                                            val zoomChange = event.calculateZoom()
+                                            val panChange = event.calculatePan()
+                                            scale = (scale * zoomChange).coerceIn(1f, 6f)
+                                            offset = if (scale > 1.01f) {
+                                                offset + panChange
+                                            } else {
+                                                Offset.Zero
+                                            }
+                                            event.changes.forEach { it.consume() }
+                                        }
+                                    } while (event.changes.any { it.pressed })
                                 }
                             }
                             .pointerInput(item.id) {
