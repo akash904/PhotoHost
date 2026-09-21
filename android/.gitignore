@@ -1,0 +1,33 @@
+# Build output
+/build
+/app/build
+.gradle/
+.kotlin/
+/captures
+.externalNativeBuild
+.cxx
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Machine-specific: points at wherever the Android SDK happens to live.
+local.properties
+
+# IDE
+*.iml
+.idea/
+*.hprof
+
+# Working files from development sessions
+/.screenshots/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Deliberately NOT ignored:
+#   gradle/wrapper/gradle-wrapper.jar  -- without it a fresh clone cannot build
+#   app/schemas/                       -- exported Room schemas; migrations are written and
+#                                         tested against these, so losing them means losing the
+#                                         ability to migrate an existing database safely

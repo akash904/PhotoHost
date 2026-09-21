@@ -1,0 +1,35 @@
+package dev.gpicalter.service
+
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+/**
+ * Process-local view of the service, for the UI to observe.
+ *
+ * Deliberately not persisted and not cross-process: the Activity and the service share one
+ * process, and anything that must outlive the process belongs in the database (from M3) or in
+ * the heartbeat file, not here.
+ */
+object ServerState {
+
+    data class Snapshot(
+        val running: Boolean = false,
+        val port: Int = 8080,
+        val startedAt: Long = 0L,
+        val backend: String = "",
+        val urls: List<String> = emptyList(),
+        val token: String = "",
+        val heartbeats: Int = 0,
+        val lastHeartbeatAt: Long = 0L,
+        val error: String? = null,
+        val scanNote: String? = null,
+    )
+
+    private val _state = MutableStateFlow(Snapshot())
+    val state: StateFlow<Snapshot> = _state.asStateFlow()
+
+    fun update(transform: (Snapshot) -> Snapshot) {
+        _state.value = transform(_state.value)
+    }
+}

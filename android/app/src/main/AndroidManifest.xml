@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Reading this phone's own camera roll, for the backup client. Requested together so the
+         user sees one dialog; if they choose "Select photos" only the third is granted and the
+         backup covers just that selection. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <!-- The backup worker runs in the foreground. dataSync is correct here precisely because a
+         backup pass is bounded work: its six-hour cap on Android 15+ would be fatal for the
+         always-on server, which is why that uses specialUse instead. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- Only for scanning a pairing QR. required="false" so the app still installs on a device
+         with no camera, where pairing falls back to typing the address by hand. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <application
+        android:allowBackup="false"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:icon="@android:drawable/ic_menu_gallery"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.GpicAlter">
+
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- The M0 storage probes. Not a launcher entry any more; reached from Settings. -->
+        <activity
+            android:name=".probe.ProbeActivity"
+            android:exported="false"
+            android:label="Diagnostics" />
+
+        <!--
+          specialUse, not dataSync. On Android 15+ dataSync is capped at 6 cumulative hours per 24
+          and is forbidden from being started by BOOT_COMPLETED; specialUse is exempt from both.
+          Note this device runs Android 13 (API 33), where the type attribute predates the platform
+          and is simply ignored - these declarations are forward-compatible, not load-bearing here.
+        -->
+        <service
+            android:name=".service.MediaServerService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="self_hosted_personal_media_server" />
+        </service>
+
+        <!--
+          WorkManager hosts foreground workers in its own SystemForegroundService, and its library
+          manifest declares no foregroundServiceType. Android refuses a startForeground() that asks
+          for a type the service element does not declare, so BackupWorker's dataSync request
+          crashed the process on every attempt. Overriding the merged entry is the supported fix.
+        -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
+
+        <receiver
+            android:name=".service.BootReceiver"
+            android:exported="false"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+</manifest>

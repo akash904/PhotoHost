@@ -1,0 +1,391 @@
+package dev.gpicalter.ui.screen
+
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
+import dev.gpicalter.media.BlurHashDecoder
+import dev.gpicalter.net.TimelineItemDto
+import dev.gpicalter.ui.Cell
+import dev.gpicalter.ui.GridEntry
+import dev.gpicalter.ui.JustifiedGrid
+import dev.gpicalter.ui.LibraryViewModel
+
+private const val GAP_DP = 2
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+@Composable
+fun LibraryScreen(
+    onOpen: (Long) -> Unit,
+    vm: LibraryViewModel = viewModel(),
+) {
+    val state by vm.state.collectAsStateWithLifecycle()
+    val listState = rememberLazyListState()
+    val density = LocalDensity.current
+
+    // Load the next page before the user reaches the bottom, so scrolling never visibly stalls.
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
+            .collect { last ->
+                val total = listState.layoutInfo.totalItemsCount
+                if (total > 0 && last >= total - 4) vm.loadMore()
+            }
+    }
+
+    var confirmDelete by remember { mutableStateOf(false) }
+
+    // Back should leave selection mode before it leaves the screen.
+    BackHandler(enabled = state.selected.isNotEmpty()) { vm.clearSelection() }
+
+    if (confirmDelete) {
+        val n = state.selected.size
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("Delete $n item${if (n == 1) "" else "s"}?") },
+            text = {
+                Text(
+                    "They move to the trash. The originals on the phone that produced them are " +
+                        "not touched.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    vm.deleteSelected()
+                }) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text("Cancel") }
+            },
+        )
+    }
+
+    Column(Modifier.fillMaxSize()) {
+    if (state.selected.isNotEmpty()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(onClick = { vm.clearSelection() }) { Text("✕") }
+            Text(
+                "${state.selected.size} selected",
+                Modifier.weight(1f),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            TextButton(onClick = { vm.selectAllLoaded() }) { Text("All") }
+            TextButton(onClick = { vm.favoriteSelected(true) }) { Text("★") }
+            TextButton(onClick = { confirmDelete = true }) { Text("Delete") }
+        }
+    }
+
+    Row(Modifier.fillMaxSize()) {
+        BoxWithConstraints(Modifier.weight(1f)) {
+            val widthPx = with(density) { maxWidth.toPx().toInt() }
+            val gapPx = with(density) { GAP_DP.dp.toPx().toInt() }
+            // Denser on a phone, taller rows on a tablet or landscape.
+            val targetPx = with(density) { (if (maxWidth < 500.dp) 128.dp else 180.dp).toPx().toInt() }
+
+            val entries = remember(state.items, widthPx, targetPx) {
+                JustifiedGrid.build(state.items, widthPx, targetPx, gapPx)
+            }
+
+            when {
+                state.items.isEmpty() && !state.reachable -> Unreachable(state.endpoint, state.error)
+                state.items.isEmpty() && state.loading -> Centered { CircularProgressIndicator() }
+                state.items.isEmpty() -> Centered {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Nothing here yet", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Add photos to the library and tap Scan.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                // The grid is a snapshot of a server that keeps changing underneath it -- a backup
+                // running on another phone adds photos this app has no way to hear about. Pull to
+                // refresh is the expected gesture for exactly that.
+                else -> PullToRefreshBox(
+                    isRefreshing = state.loading && state.items.isEmpty(),
+                    onRefresh = { vm.refresh() },
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                  LazyColumn(Modifier.fillMaxSize(), state = listState) {
+                    entries.forEach { entry ->
+                        when (entry) {
+                            is GridEntry.DayHeader -> stickyHeader(key = "h_${entry.dayKey}") {
+                                DayHeader(entry)
+                            }
+                            is GridEntry.PhotoRow -> item(key = "r_${entry.cells.first().item.id}") {
+                                PhotoRow(entry, vm, state.selected, onOpen)
+                            }
+                        }
+                    }
+                    if (state.loading) {
+                        item(key = "loading") {
+                            Box(Modifier.fillMaxWidth().padding(16.dp), Alignment.Center) {
+                                CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                            }
+                        }
+                    }
+                  }
+                }
+            }
+        }
+
+        if (state.buckets.isNotEmpty()) Scrubber(vm)
+    }
+    }
+}
+
+@Composable
+private fun DayHeader(entry: GridEntry.DayHeader) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(start = 8.dp, end = 8.dp, top = 12.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(entry.label, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+        Text(
+            "  ${entry.count}",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun PhotoRow(
+    row: GridEntry.PhotoRow,
+    vm: LibraryViewModel,
+    selected: Set<Long>,
+    onOpen: (Long) -> Unit,
+) {
+    val density = LocalDensity.current
+    Row(
+        Modifier.fillMaxWidth().padding(bottom = GAP_DP.dp),
+        horizontalArrangement = Arrangement.spacedBy(GAP_DP.dp),
+    ) {
+        for (cell in row.cells) {
+            val isSelected = cell.item.id in selected
+            Tile(
+                cell = cell,
+                widthDp = with(density) { cell.width.toDp() },
+                heightDp = with(density) { cell.height.toDp() },
+                thumbUrl = vm.api.thumbUrl(cell.item.id),
+                selected = isSelected,
+                selectionMode = selected.isNotEmpty(),
+                onClick = {
+                    if (selected.isNotEmpty()) vm.toggleSelect(cell.item.id) else onOpen(cell.item.id)
+                },
+                onLongClick = { vm.toggleSelect(cell.item.id) },
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun Tile(
+    cell: Cell,
+    widthDp: androidx.compose.ui.unit.Dp,
+    heightDp: androidx.compose.ui.unit.Dp,
+    thumbUrl: String,
+    selected: Boolean,
+    selectionMode: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    val item = cell.item
+    // Painted before any network request, at the right size and roughly the right colours, so the
+    // grid never shows grey boxes and never shifts as thumbnails arrive.
+    val placeholder = remember(item.blurhash) {
+        BlurHashDecoder.decode(item.blurhash)?.let { BitmapPainter(it.asImageBitmap()) }
+    }
+
+    Box(
+        Modifier
+            .width(widthDp)
+            .height(heightDp)
+            .clip(RoundedCornerShape(2.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            // Long-press starts selection, which is the gesture every gallery uses; once in
+            // selection mode a plain tap toggles rather than opening, so you can sweep through a
+            // batch without the viewer appearing over it.
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .then(
+                if (selected) {
+                    Modifier.border(3.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp))
+                } else {
+                    Modifier
+                }
+            ),
+    ) {
+        AsyncImage(
+            model = ImageRequest.Builder(LocalContext.current)
+                .data(thumbUrl)
+                .crossfade(true)
+                .build(),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            placeholder = placeholder,
+            modifier = Modifier.fillMaxSize(),
+        )
+        if (item.isVideo) {
+            Text(
+                text = "▶ ${JustifiedGrid.durationLabel(item.durationMs)}",
+                color = Color.White,
+                fontSize = 11.sp,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp),
+            )
+        }
+        if (item.favorite) {
+            Text(
+                text = "★",
+                color = Color.White,
+                fontSize = 12.sp,
+                modifier = Modifier.align(Alignment.TopStart).padding(4.dp),
+            )
+        }
+        if (selectionMode) {
+            Text(
+                text = if (selected) "☑" else "☐",
+                color = Color.White,
+                fontSize = 16.sp,
+                modifier = Modifier.align(Alignment.TopEnd).padding(4.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Month rail. Each month is sized by how many photos it holds, so a busy month is a bigger target
+ * than a quiet one, and tapping performs a keyset seek rather than scrolling through the gap.
+ */
+@Composable
+private fun Scrubber(vm: LibraryViewModel) {
+    val state by vm.state.collectAsStateWithLifecycle()
+    Column(
+        Modifier
+            .width(36.dp)
+            .fillMaxSize()
+            .padding(vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(1.dp),
+    ) {
+        var lastYear = ""
+        for (bucket in state.buckets) {
+            val year = bucket.bucket.take(4)
+            val isYear = year != lastYear
+            lastYear = year
+            val weight = kotlin.math.sqrt(bucket.count.toDouble()).toFloat().coerceAtLeast(1f)
+            Box(
+                Modifier
+                    .weight(weight)
+                    .fillMaxWidth()
+                    .clickable { vm.jumpTo(bucket) },
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                Text(
+                    text = if (isYear) year else bucket.bucket.substring(5, 7),
+                    fontSize = if (isYear) 10.sp else 9.sp,
+                    fontWeight = if (isYear) FontWeight.Bold else FontWeight.Normal,
+                    color = if (isYear) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    modifier = Modifier.padding(end = 6.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun Unreachable(endpoint: String, error: String?) {
+    Centered {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(24.dp),
+        ) {
+            Text("Library unreachable", style = MaterialTheme.typography.titleMedium)
+            Text(
+                endpoint,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (error != null) {
+                Text(
+                    error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+            Text(
+                "Check Settings: start the server here, or point this app at another one.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun Centered(content: @Composable () -> Unit) {
+    Box(Modifier.fillMaxSize(), Alignment.Center) { content() }
+}

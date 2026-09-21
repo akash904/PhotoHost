@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The library is served over plain HTTP, so this app has to be allowed to speak cleartext.
+  Android blocks it by default from API 28 onward.
+
+  This cannot be narrowed to the machines that matter. The server is a user-configured LAN address
+  or a Tailscale IP, and network-security-config matches exact hosts only, never ranges. TLS is not
+  the answer either: a self-signed certificate on a LAN mostly trains people to click through
+  warnings. Encryption off-LAN comes from Tailscale's WireGuard tunnel, and the app warns against
+  ever port-forwarding this to the internet.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

@@ -1,0 +1,18 @@
+# Normalise to LF in the repository; check out native on Windows.
+* text=auto
+
+# gradlew is executed by /bin/sh. With CRLF endings it fails on Linux and macOS with a confusing
+# "bad interpreter" error, so it is pinned regardless of the checkout platform.
+gradlew text eol=lf
+*.sh text eol=lf
+
+# Windows batch files need CRLF.
+*.bat text eol=crlf
+
+# Never touched, never diffed as text.
+*.jar binary
+*.png binary
+*.jpg binary
+*.webp binary
+*.ttf binary
+*.keystore binary
