@@ -50,7 +50,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
@@ -86,6 +86,7 @@ fun ViewerScreen(
         return
     }
     val context = LocalContext.current
+    val container = remember { dev.gpicalter.di.AppContainer.get(context) }
     val startIndex = remember(startId) { items.indexOfFirst { it.id == startId }.coerceAtLeast(0) }
     val pagerState = rememberPagerState(initialPage = startIndex) { items.size }
 
@@ -100,8 +101,12 @@ fun ViewerScreen(
     // Media3 fetches the original over HTTP, so it needs the same bearer token every other
     // request carries. One player for the whole viewer: creating one per page would churn codecs.
     val player = remember {
-        val http = DefaultHttpDataSource.Factory()
-            .setDefaultRequestProperties(mapOf("Authorization" to api.authHeader()))
+        // OkHttp rather than the default HttpURLConnection stack: video has to travel the same
+        // pinned TLS path as everything else, or playback fails with a trust error on exactly the
+        // servers that are set up most carefully.
+        val http = OkHttpDataSource.Factory(
+            okhttp3.Call.Factory { request -> container.http.newCall(request) },
+        ).setDefaultRequestProperties(mapOf("Authorization" to api.authHeader()))
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(http))
             .build()
