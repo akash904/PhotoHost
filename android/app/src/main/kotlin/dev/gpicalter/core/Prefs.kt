@@ -26,6 +26,17 @@ class Prefs(context: Context) {
         get() = p.getInt(KEY_PORT, 8080)
         set(v) = p.edit().putInt(KEY_PORT, v).apply()
 
+    /**
+     * Whether to ask the router to accept inbound connections from the internet.
+     *
+     * Opt-in, and deliberately so: this is the difference between a library only reachable from your
+     * own Wi-Fi and one reachable from anywhere. What guards it once open is the bearer token and the
+     * pinned certificate -- but the choice to expose it belongs to the user, not to a default.
+     */
+    var remoteAccess: Boolean
+        get() = p.getBoolean(KEY_REMOTE_ACCESS, false)
+        set(v) = p.edit().putBoolean(KEY_REMOTE_ACCESS, v).apply()
+
     /** Whether the service should come back up after a reboot. Opt-in. */
     var autostart: Boolean
         get() = p.getBoolean(KEY_AUTOSTART, false)
@@ -185,5 +196,6 @@ class Prefs(context: Context) {
         const val KEY_BUCKETS = "backupBuckets"
         const val KEY_MANUAL_IDS = "pendingManualIds"
         const val KEY_ONBOARDED = "onboarded"
+        const val KEY_REMOTE_ACCESS = "remoteAccess"
     }
 }

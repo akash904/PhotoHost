@@ -11,6 +11,7 @@ import coil3.memory.MemoryCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import dev.gpicalter.data.entity.VolumeEntity
 import dev.gpicalter.net.LibraryApi
+import dev.gpicalter.net.RemoteAccess
 import dev.gpicalter.net.Pinning
 import okhttp3.OkHttpClient
 import dev.gpicalter.storage.InternalStore
@@ -32,6 +33,13 @@ class AppContainer private constructor(context: Context) {
 
     /** How this app reads a library -- loopback when serving locally, a URL when remote. */
     val api: LibraryApi by lazy { LibraryApi(prefs) { http } }
+
+    /**
+     * Shared so the service's renewal loop and the Settings buttons act on one object. Two
+     * instances would mean a manual retry that does not cancel the loop that is about to
+     * overwrite its result.
+     */
+    val remoteAccess: RemoteAccess by lazy { RemoteAccess(app) }
 
     /**
      * Thumbnails are authenticated like every other route, so the image loader has to carry the

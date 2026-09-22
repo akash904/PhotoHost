@@ -185,6 +185,12 @@ class MediaServerService : Service() {
             if (proxy.start(scope)) tlsProxy = proxy
         }
 
+        // Asking the router to accept inbound connections is opt-in, and only ever for the TLS
+        // port. Port 8080 carries the token in clear text and must never leave the LAN.
+        if (container.prefs.remoteAccess) {
+            container.remoteAccess.keepOpen(scope, port + 363)
+        }
+
         val urls = NetInterfaces.endpoints().map { "${it.label}: ${it.url(port)}" }
         ServerState.update {
             it.copy(
@@ -270,6 +276,7 @@ class MediaServerService : Service() {
         server = null
         runCatching { tlsProxy?.stop() }
         tlsProxy = null
+        runCatching { container.remoteAccess.stop() }
         runner = null
         releaseLocks()
         scope.cancel()
