@@ -23,7 +23,24 @@ object NetInterfaces {
         try {
             for (nif in NetworkInterface.getNetworkInterfaces()) {
                 if (!nif.isUp || nif.isLoopback) continue
-                for (addr in nif.inetAddresses) {
+                val addresses = nif.inetAddresses.toList()
+
+                if (isTailscale(nif, addresses)) {
+                    // The 100.x address is the one Tailscale shows the user and the one that goes
+                    // in a pairing code. The unique-local address works too, but only as a fallback
+                    // worth having if a tailnet ever hands out no IPv4.
+                    val preferred = addresses.filterIsInstance<Inet4Address>()
+                        .firstOrNull { !it.isLoopbackAddress && !it.isLinkLocalAddress }
+                        ?.hostAddress
+                        ?: addresses.filterIsInstance<Inet6Address>()
+                            .mapNotNull { it.hostAddress }
+                            .firstOrNull { it.startsWith(TAILSCALE_ULA, ignoreCase = true) }
+                            ?.let { "[" + it.substringBefore('%') + "]" }
+                    preferred?.let { out += Endpoint(TAILSCALE, it) }
+                    continue
+                }
+
+                for (addr in addresses) {
                     if (addr.isLoopbackAddress || addr.isLinkLocalAddress) continue
                     val raw = addr.hostAddress ?: continue
                     when (addr) {
@@ -77,6 +94,23 @@ object NetInterfaces {
     /** Whether a Tailscale interface is up, which changes what remote access has to do. */
     fun hasTailscale(): Boolean = endpoints().any { it.label == TAILSCALE }
 
+    /**
+     * Recognises Tailscale's interface by the addresses on it rather than its name.
+     *
+     * The name is not dependable: on Android the client is a `VpnService`, so the kernel calls it
+     * `tun0` or `tun1` depending on what else has held a VPN slot this boot, and only desktop
+     * builds produce `tailscale0`. Matching on the name silently fails on exactly the platform this
+     * app runs on.
+     *
+     * The unique-local prefix is dependable. `fd7a:115c:a1e0::/48` is Tailscale's, appears on every
+     * node, and belongs to nothing else. Checking it also avoids mistaking a phone whose carrier
+     * puts it behind NAT for a tailnet: that interface carries a 100.64/10 address too, but never
+     * this prefix.
+     */
+    private fun isTailscale(nif: NetworkInterface, addresses: List<java.net.InetAddress>): Boolean =
+        nif.name.startsWith("tailscale") ||
+            addresses.any { it.hostAddress?.startsWith(TAILSCALE_ULA, ignoreCase = true) == true }
+
     private fun labelFor(name: String): String = when {
         name.startsWith("tailscale") -> TAILSCALE
         name.startsWith("wlan") -> "Wi-Fi"
@@ -86,4 +120,7 @@ object NetInterfaces {
     }
 
     private const val TAILSCALE = "Tailscale"
+
+    /** Tailscale's assigned unique-local prefix, the one unmistakable marker of a tailnet. */
+    private const val TAILSCALE_ULA = "fd7a:115c:a1e0"
 }
