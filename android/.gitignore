@@ -21,6 +21,9 @@ local.properties
 
 # Working files from development sessions
 /.screenshots/
+# Icon/design preview pages. Open in a browser to review artwork; they duplicate what the
+# vector drawables already define, so they are reference, not source.
+/design/
 
 # OS
 .DS_Store
