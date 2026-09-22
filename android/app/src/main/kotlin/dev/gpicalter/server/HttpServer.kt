@@ -7,6 +7,7 @@ import dev.gpicalter.data.entity.MediaType
 import dev.gpicalter.data.entity.ThumbSize
 import dev.gpicalter.data.entity.ThumbState
 import dev.gpicalter.media.MetadataExtractor
+import dev.gpicalter.media.ThumbnailCache
 import dev.gpicalter.media.ThumbnailGenerator
 import dev.gpicalter.storage.LibraryStore
 import dev.gpicalter.storage.StoreEntry
@@ -43,6 +44,15 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
+ * How stale `last_access_at` is allowed to get.
+ *
+ * Eviction only needs to rank thumbnails against each other, and an hour's resolution does that
+ * just as well as a millisecond's -- at a tiny fraction of the writes, on the path a scrolling grid
+ * hits hundreds of times a second.
+ */
+private const val TOUCH_INTERVAL_MS = 60 * 60_000L
+
+/**
  * The embedded HTTP server.
  *
  * CIO rather than Netty: Netty assumes a server JVM and hits missing-class failures on ART. CIO is
@@ -53,6 +63,7 @@ class HttpServer(
     private val db: AppDatabase,
     private val assets: AssetManager,
     private val thumbs: ThumbnailGenerator,
+    private val thumbCache: ThumbnailCache,
     private val uploads: UploadService,
     private val auth: Auth,
     private val port: Int,
@@ -498,6 +509,17 @@ class HttpServer(
             return
         }
 
+        // Recorded here, above the 304, because a client revalidating a cached thumbnail is still
+        // using it -- and a popular thumbnail is served from the client's cache almost every time,
+        // so touching only on 200 would mark exactly the hottest entries as cold.
+        //
+        // The row is already in hand, so the throttle costs no extra read: one write per thumbnail
+        // per interval, instead of one per request on a grid that fires hundreds at a time.
+        val now = System.currentTimeMillis()
+        if (row.lastAccessAt == null || now - row.lastAccessAt > TOUCH_INTERVAL_MS) {
+            db.thumbnails().touch(id, sizeClass, now)
+        }
+
         val etag = "\"${asset.contentHash.take(16)}-$sizeClass\""
         if (call.request.headers[HttpHeaders.IfNoneMatch] == etag) {
             call.respond(HttpStatusCode.NotModified)
@@ -631,7 +653,11 @@ class HttpServer(
         )
     }
 
-    private suspend fun stats(): StatsDto = StatsDto(
+    private suspend fun stats(): StatsDto {
+        // Rows can over-report: two assets with identical bytes share one file but count twice.
+        // The walk is the disk's own answer, and it is what eviction is judged against.
+        val thumbCacheDisk = thumbCache.diskBytes()
+        return StatsDto(
         assets = db.assets().count(),
         trashed = db.assets().trashCount(),
         libraryBytes = db.assets().totalBytes(),
@@ -640,11 +666,14 @@ class HttpServer(
         gridThumbs = db.thumbnails().readyCount(ThumbSize.GRID),
         previewThumbs = db.thumbnails().readyCount(ThumbSize.PREVIEW),
         thumbCacheBytes = db.thumbnails().cachedBytes(),
+        thumbCacheDiskBytes = thumbCacheDisk,
+        thumbCacheLimitBytes = thumbCache.budget(thumbCacheDisk).limitBytes,
         pendingJobs = db.jobs().countByState(0),
         blockedJobs = db.jobs().countByState(5),
         failedJobs = db.jobs().countByState(3),
-        pendingByType = db.jobs().pendingByType().associate { it.type to it.count },
-    )
+            pendingByType = db.jobs().pendingByType().associate { it.type to it.count },
+        )
+    }
 
     private suspend fun serveAsset(call: ApplicationCall, path: String, type: ContentType) {
         if (call.denied()) return
@@ -826,6 +855,9 @@ data class StatsDto(
     val gridThumbs: Int,
     val previewThumbs: Int,
     val thumbCacheBytes: Long,
+    /** What the cache directory actually occupies, as opposed to what the rows add up to. */
+    val thumbCacheDiskBytes: Long,
+    val thumbCacheLimitBytes: Long,
     val pendingJobs: Int,
     val blockedJobs: Int,
     val failedJobs: Int,

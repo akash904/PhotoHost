@@ -30,7 +30,18 @@ data class VolumeEntity(
 @Entity(
     tableName = "thumbnails",
     primaryKeys = ["asset_id", "size_class"],
-    indices = [Index(value = ["state"]), Index(value = ["last_access_at"])],
+    indices = [
+        Index(value = ["state"]),
+        Index(value = ["last_access_at"]),
+        // Eviction asks "who else READY points at this file?" once per candidate; without this that
+        // is a full table scan per thumbnail considered.
+        //
+        // Composite rather than `cache_rel_path` alone, and the pairing is load-bearing: with one
+        // column the planner has two single-equality indices to choose from, and absent ANALYZE
+        // statistics -- which this app never gathers -- it picks `state`, which matches almost every
+        // row. Covering both terms makes it the unambiguous best plan with no statistics at all.
+        Index(value = ["cache_rel_path", "state"]),
+    ],
     foreignKeys = [
         ForeignKey(
             entity = AssetEntity::class,

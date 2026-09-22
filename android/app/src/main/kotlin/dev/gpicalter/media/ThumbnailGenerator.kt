@@ -30,7 +30,8 @@ class ThumbnailGenerator(
     context: Context,
     private val store: LibraryStore,
 ) {
-    private val root = File(context.filesDir, "thumbs").apply { mkdirs() }
+    /** Exposed so [ThumbnailCache] measures and sweeps the same directory this writes to. */
+    val root: File = File(context.filesDir, "thumbs").apply { mkdirs() }
 
     data class Rendered(val relPath: String, val bytes: Long, val width: Int, val height: Int)
 

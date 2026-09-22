@@ -39,7 +39,7 @@ import dev.gpicalter.data.entity.VolumeEntity
  * content hash, this file is rebuildable by rescanning if it is ever lost.
  */
 @Database(
-    version = 3,
+    version = 4,
     exportSchema = true,
     entities = [
         AssetEntity::class,
@@ -91,6 +91,25 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Index only. Cache eviction asks "does another asset share this thumbnail file?" once per
+         * candidate, and on a library with tens of thousands of rows that question has to be
+         * answerable without scanning the table each time.
+         *
+         * Both columns, because a `cache_rel_path` index alone does not get used: the query also
+         * filters on `state`, and with no ANALYZE statistics the planner picks the `state` index --
+         * which matches nearly every row -- leaving the new index idle. Indexing the pair makes it
+         * the best plan unconditionally.
+         */
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_thumbnails_cache_rel_path_state " +
+                        "ON thumbnails (cache_rel_path, state)",
+                )
+            }
+        }
+
         @Volatile
         private var instance: AppDatabase? = null
 
@@ -102,7 +121,7 @@ abstract class AppDatabase : RoomDatabase() {
                 // WAL: readers never block the writer, which matters because the HTTP server
                 // reads the timeline while the job runner is writing thumbnail rows.
                 // (Room already enables PRAGMA foreign_keys itself, so cascades work as declared.)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .setJournalMode(JournalMode.WRITE_AHEAD_LOGGING)
                 // Deliberately NO fallbackToDestructiveMigration. Losing this database means
                 // re-hashing and re-thumbnailing the entire library -- hours of work on a phone.

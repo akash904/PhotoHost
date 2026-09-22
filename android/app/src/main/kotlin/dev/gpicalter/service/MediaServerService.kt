@@ -21,10 +21,12 @@ import dev.gpicalter.data.entity.JobType
 import dev.gpicalter.di.AppContainer
 import dev.gpicalter.index.LibraryIndexer
 import dev.gpicalter.index.StoreScanner
+import dev.gpicalter.jobs.EvictCacheHandler
 import dev.gpicalter.jobs.JobHandler
 import dev.gpicalter.jobs.JobRunner
 import dev.gpicalter.jobs.ScanHandler
 import dev.gpicalter.jobs.ThumbnailHandler
+import dev.gpicalter.media.ThumbnailCache
 import dev.gpicalter.media.ThumbnailGenerator
 import dev.gpicalter.probe.ProbeActivity
 import dev.gpicalter.server.Auth
@@ -47,6 +49,7 @@ private const val TAG = "gpic"
 private const val CHANNEL = "server"
 private const val NOTIF_ID = 1
 private const val HEARTBEAT_INTERVAL_MS = 60_000L
+private const val SWEEP_INTERVAL_MS = 6 * 60 * 60_000L
 
 /**
  * Hosts the HTTP server and the job runner for as long as the phone is on.
@@ -74,6 +77,9 @@ class MediaServerService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var heartbeats = 0
+
+    /** 0 means "never", which is why the first heartbeat always asks for a sweep. */
+    private var lastSweepRequestedAt = 0L
     private var bringingUp = false
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -124,11 +130,13 @@ class MediaServerService : Service() {
         acquireLocks()
 
         val generator = ThumbnailGenerator(this, store)
+        val thumbCache = ThumbnailCache(container.db, generator)
         val indexer = LibraryIndexer(container.db, store, volumeId)
         val scanner = StoreScanner(store, indexer)
 
         val handlers: Map<String, JobHandler> = mapOf(
             JobType.THUMBNAIL to ThumbnailHandler(container.db, store, generator),
+            JobType.EVICT_CACHE to EvictCacheHandler(thumbCache),
             JobType.SCAN_VOLUME to ScanHandler(scanner) { p ->
                 ServerState.update {
                     it.copy(scanNote = "scanned ${p.scanned}, new ${p.indexed}, dup ${p.duplicates}, skip ${p.skipped}, fail ${p.failed}")
@@ -168,6 +176,7 @@ class MediaServerService : Service() {
             db = container.db,
             assets = assets,
             thumbs = generator,
+            thumbCache = thumbCache,
             uploads = uploads,
             auth = Auth(token),
             port = port,
@@ -212,6 +221,33 @@ class MediaServerService : Service() {
         notify(buildNotification("Serving ${store.label} on :$port"))
 
         startHeartbeat()
+    }
+
+    /**
+     * Asks for a cache sweep on a slow cadence, riding the heartbeat rather than owning a timer.
+     *
+     * The first one goes in immediately after start-up: the phone may have been off for days with
+     * the cache over budget, and a server that has just come up is the least busy it will ever be.
+     * After that the interval is deliberately long -- eviction competes with thumbnail rendering for
+     * the same disk, and the cache does not grow fast enough to need watching any closer.
+     */
+    private suspend fun maybeEnqueueSweep() {
+        val now = System.currentTimeMillis()
+        if (now - lastSweepRequestedAt < SWEEP_INTERVAL_MS) return
+        lastSweepRequestedAt = now
+        container.db.jobs().enqueue(
+            JobEntity(
+                type = JobType.EVICT_CACHE,
+                payload = "{}",
+                // Released on both complete and fail, so this never wedges: a sweep already waiting
+                // makes a second request a no-op, and a finished one frees the key for the next.
+                dedupeKey = "${JobType.EVICT_CACHE}:pending",
+                // Housekeeping. It yields to anything a person is actually waiting on.
+                priority = 90,
+                createdAt = now,
+                updatedAt = now,
+            ),
+        )
     }
 
     private suspend fun enqueueScan() {
@@ -263,6 +299,7 @@ class MediaServerService : Service() {
             heartbeats++
             ServerState.update { it.copy(heartbeats = heartbeats, lastHeartbeatAt = System.currentTimeMillis()) }
             refreshAddresses()
+            maybeEnqueueSweep()
             delay(HEARTBEAT_INTERVAL_MS)
         }
     }

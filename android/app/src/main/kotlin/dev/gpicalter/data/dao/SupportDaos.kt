@@ -60,6 +60,19 @@ interface ThumbnailDao {
     @Query("UPDATE thumbnails SET last_access_at = :now WHERE asset_id = :assetId AND size_class = :sizeClass")
     suspend fun touch(assetId: Long, sizeClass: Int, now: Long)
 
+    /**
+     * How many *other* ready rows point at the same cache file.
+     *
+     * Thumbnails are named by content hash, so identical originals share one file. Eviction must ask
+     * this before deleting bytes, or dropping one cold asset blanks every duplicate of it.
+     */
+    @Query("SELECT COUNT(*) FROM thumbnails WHERE cache_rel_path = :relPath AND state = 3 AND asset_id != :assetId")
+    suspend fun sharersOf(relPath: String, assetId: Long): Int
+
+    /** Every cache file still spoken for, for finding the ones that are not. */
+    @Query("SELECT cache_rel_path FROM thumbnails WHERE state = 3 AND cache_rel_path IS NOT NULL")
+    suspend fun readyCachePaths(): List<String>
+
     @Query("DELETE FROM thumbnails WHERE asset_id = :assetId AND size_class = :sizeClass")
     suspend fun delete(assetId: Long, sizeClass: Int)
 }

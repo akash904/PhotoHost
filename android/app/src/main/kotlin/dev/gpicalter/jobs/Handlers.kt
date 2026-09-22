@@ -7,6 +7,7 @@ import dev.gpicalter.data.entity.MediaType
 import dev.gpicalter.data.entity.ThumbState
 import dev.gpicalter.data.entity.ThumbnailEntity
 import dev.gpicalter.index.StoreScanner
+import dev.gpicalter.media.ThumbnailCache
 import dev.gpicalter.media.ThumbnailGenerator
 import dev.gpicalter.storage.LibraryStore
 import kotlinx.serialization.json.Json
@@ -107,6 +108,28 @@ class ThumbnailHandler(
                 lastError = error?.take(300),
             ),
         )
+    }
+}
+
+/**
+ * Spends the thumbnail cache budget.
+ *
+ * A job rather than a timer inside the sweeper, so it inherits everything the queue already does:
+ * it will not run while the phone is thermally throttled, it is deduped so a burst of triggers is
+ * one sweep, and a process death mid-sweep leaves the cache merely un-swept rather than half
+ * accounted for. Nothing here is retried -- the next sweep supersedes this one entirely.
+ */
+class EvictCacheHandler(
+    private val cache: ThumbnailCache,
+) : JobHandler {
+
+    override suspend fun run(job: JobEntity): Outcome {
+        return try {
+            cache.sweep()
+            Outcome.Done
+        } catch (t: Throwable) {
+            Outcome.Fail("${t.javaClass.simpleName}: ${t.message}")
+        }
     }
 }
 
