@@ -107,10 +107,17 @@ object PortMapper {
         // ---- UPnP first: it is the only one of the three that can open an IPv6 pinhole on
         // ---- consumer firmware, and IPv6 is the path that avoids NAT altogether.
         val locations = ssdpSearch(lanIpv4, lines)
-        for (location in locations) {
-            val services = servicesOf(location, lines)
-            if (services.isEmpty()) continue
-            lines += "gateway: $location offers ${services.size} service(s)"
+        val described = locations.mapNotNull { describe(it, lines) }
+        val routers = described.filter { it.isGateway }
+        for (other in described.filterNot { it.isGateway }) {
+            lines += "${other.label}: not a router, ignored"
+        }
+        if (described.isNotEmpty() && routers.isEmpty()) {
+            lines += "no router among the devices that replied"
+        }
+        for (description in routers) {
+            val services = description.services
+            lines += "gateway: ${description.label}, ${services.size} service(s)"
 
             if (!opened && globalIpv6 != null) {
                 services.firstOrNull { it.type == IPV6_SERVICE }?.let { svc ->
@@ -244,17 +251,35 @@ object PortMapper {
     private data class Service(val type: String, val controlUrl: String)
 
     /**
+     * A device's identity plus the services it offers.
+     *
+     * SSDP answers come from everything on the network that speaks UPnP -- televisions, speakers,
+     * media servers -- not only routers. Knowing what replied is what lets the trace say "a TV
+     * answered, your router did not", which is a different problem from "nothing answered".
+     */
+    private data class Description(
+        val deviceType: String?,
+        val friendlyName: String?,
+        val services: List<Service>,
+    ) {
+        val isGateway: Boolean get() = deviceType?.contains("InternetGatewayDevice", true) == true
+        val label: String get() = friendlyName ?: deviceType?.substringAfterLast(':') ?: "unknown device"
+    }
+
+    /**
      * Parses the router's description document into the services we can act on.
      *
      * `controlURL` is usually a relative path, so it is resolved against `URLBase` when the document
      * supplies one and against the description URL otherwise -- the rule the UPnP spec sets out.
      */
-    private fun servicesOf(location: String, lines: MutableList<String>): List<Service> {
+    private fun describe(location: String, lines: MutableList<String>): Description? {
         val xml = httpGet(location) ?: run {
-            lines += "could not fetch $location"
-            return emptyList()
+            lines += "$location did not answer"
+            return null
         }
         val services = ArrayList<Service>()
+        var deviceType: String? = null
+        var friendlyName: String? = null
         try {
             val parser = XmlPullParserFactory.newInstance().newPullParser()
             parser.setInput(StringReader(xml))
@@ -278,6 +303,10 @@ object PortMapper {
                             "URLBase" -> base = text
                             "serviceType" -> type = text
                             "controlURL" -> control = text
+                            // The outermost device element is the one that matters; nested embedded
+                            // devices would otherwise overwrite it with a sub-device's identity.
+                            "deviceType" -> deviceType = deviceType ?: text
+                            "friendlyName" -> friendlyName = friendlyName ?: text
                         }
                     }
 
@@ -292,9 +321,12 @@ object PortMapper {
                 }
             }
         } catch (t: Throwable) {
-            lines += "malformed description at $location: ${t.message}"
+            // Plenty of devices answer SSDP with something that is not a UPnP description. That is
+            // their business, not a fault worth showing a parser exception for.
+            lines += "$location is not a UPnP device description"
+            return null
         }
-        return services
+        return Description(deviceType, friendlyName, services)
     }
 
     private fun absolute(base: String, ref: String): String =

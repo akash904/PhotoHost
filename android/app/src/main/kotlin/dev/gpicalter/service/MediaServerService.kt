@@ -266,7 +266,42 @@ class MediaServerService : Service() {
             runCatching { file.appendText(line) }
             heartbeats++
             ServerState.update { it.copy(heartbeats = heartbeats, lastHeartbeatAt = System.currentTimeMillis()) }
+            refreshAddresses()
             delay(HEARTBEAT_INTERVAL_MS)
+        }
+    }
+
+    /**
+     * Re-reads the phone's addresses, because they change underneath a running server.
+     *
+     * Observed on Airtel: the delegated IPv6 prefix rotated overnight, so the phone kept its
+     * interface identifier but moved to a different /64. Anything that captured an address at
+     * start-up is then pointing at somewhere nobody lives -- and the pairing QR embeds exactly that,
+     * so a phone paired from a stale code fails with a connect timeout that reads as "the server is
+     * down" rather than "this address expired".
+     *
+     * The certificate is deliberately **not** regenerated when this happens. Its subject names would
+     * be stale, but every paired client pins the fingerprint rather than the name, so a new
+     * certificate would break all of them to fix something none of them check.
+     */
+    private fun refreshAddresses() {
+        val endpoints = NetInterfaces.endpoints()
+        // An empty list means the network is mid-reconfiguration, not that the phone has no
+        // addresses. Publishing that would blank the pairing screen for no reason.
+        if (endpoints.isEmpty()) return
+        val port = container.prefs.port
+        val urls = endpoints.map { "${it.label}: ${it.url(port)}" }
+        val secure = ServerState.state.value.tlsFingerprint?.let {
+            val preferred = endpoints.firstOrNull { e -> e.host.startsWith("[") } ?: endpoints.first()
+            "https://${preferred.host}:${port + 363}"
+        }
+        ServerState.update { current ->
+            if (current.urls == urls && current.httpsUrl == secure) {
+                current
+            } else {
+                Log.i(TAG, "addresses changed: $urls")
+                current.copy(urls = urls, httpsUrl = secure)
+            }
         }
     }
 
