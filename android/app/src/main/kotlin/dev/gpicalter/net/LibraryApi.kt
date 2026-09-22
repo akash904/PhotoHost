@@ -149,18 +149,46 @@ class LibraryApi(
 
     private suspend fun reachable(base: String): Boolean = try {
         val r = client.get("$base/health") {
-            timeout { requestTimeoutMillis = 2_500 }
+            // The connect timeout is the one that matters, and it has to be overridden explicitly:
+            // the shared client allows ten seconds, which is right for a request that is going to
+            // succeed and far too long for a probe that is expected to fail. An address on a network
+            // this phone is no longer attached to hangs until the TCP attempt gives up, so with the
+            // inherited value a single dead candidate stalled failover for ten seconds.
+            timeout {
+                connectTimeoutMillis = 2_000
+                requestTimeoutMillis = 2_500
+                socketTimeoutMillis = 2_500
+            }
         }
         r.status.isSuccess()
     } catch (t: Throwable) {
         false
     }
 
-    /** Learns the server's other addresses so a later move to another network still works. */
+    /**
+     * Learns the server's other addresses so a later move to another network still works.
+     *
+     * The response is an object wrapping the list, not a bare list. It used to be a bare list, and
+     * when the TLS work added a fingerprint alongside it the shape changed here without this call
+     * being updated -- so every response failed to deserialise, the failure was swallowed as "no
+     * endpoints", and the candidate list stayed empty. A client paired over one address then had
+     * exactly that address to try and no way back when it stopped working, which read as the server
+     * being down rather than as a client that had never learned where else to look.
+     *
+     * The fingerprint in the response is deliberately ignored. A pin has to arrive out of band -- it
+     * comes from the pairing QR -- because accepting one from the server being authenticated is
+     * circular and would let any server that answered nominate its own identity.
+     */
     suspend fun refreshEndpoints() {
-        val found = getOrNull<List<EndpointDto>>("/api/v1/endpoints") ?: return
-        val urls = found.map { it.url }.filterNot { it.contains("127.0.0.1") }
-        if (urls.isNotEmpty()) prefs.serverCandidates = urls
+        val found = getOrNull<EndpointsDto>("/api/v1/endpoints") ?: run {
+            android.util.Log.w("gpic", "could not learn the server's other addresses: $lastError")
+            return
+        }
+        val urls = found.endpoints.map { it.url }.filterNot { it.contains("127.0.0.1") }
+        if (urls.isNotEmpty()) {
+            prefs.serverCandidates = urls
+            android.util.Log.i("gpic", "learned ${urls.size} candidate addresses")
+        }
     }
 
     fun thumbUrl(assetId: Long, size: String = "grid"): String =
@@ -470,7 +498,14 @@ data class AssetPatchDto(
 )
 
 @Serializable
-data class EndpointDto(val label: String = "", val url: String = "")
+data class EndpointDto(val label: String = "", val url: String = "", val secure: Boolean = false)
+
+/** Mirrors the server's reply shape; see [LibraryApi.refreshEndpoints] for why that matters. */
+@Serializable
+data class EndpointsDto(
+    val endpoints: List<EndpointDto> = emptyList(),
+    val tlsFingerprint: String? = null,
+)
 
 @Serializable
 data class BucketDto(val bucket: String, val count: Int, val newestCapturedAt: Long)
