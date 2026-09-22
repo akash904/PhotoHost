@@ -52,6 +52,7 @@ fun PairQrScreen(
     token: String,
     httpsUrl: String? = null,
     fingerprint: String? = null,
+    alternates: List<String> = emptyList(),
     onClose: () -> Unit,
 ) {
     val clipboard = LocalClipboardManager.current
@@ -65,10 +66,24 @@ fun PairQrScreen(
     }
     // The TLS address is preferred when available: it is the one that is safe to use from outside
     // the LAN, and the fingerprint travelling in the same code is what lets the app pin it.
-    val payload = remember(base, httpsUrl, token, fingerprint) {
-        when {
+    val payload = remember(base, httpsUrl, token, fingerprint, alternates) {
+        val primary = when {
             httpsUrl != null && fingerprint != null -> "$httpsUrl/pair?c=$token&f=$fingerprint"
             else -> base?.let { "$it/pair?c=$token" }
+        }
+        // Every other address rides along. A code advertises whichever address this phone prefers,
+        // and the phone scanning it may be on a network where that one is unreachable -- over Wi-Fi
+        // scanning a code that names a VPN address, most obviously. Without the rest, that scan
+        // produces a client that paired successfully and can never connect, because discovering more
+        // addresses requires a connection it cannot make.
+        //
+        // The separators are left unescaped: they are legal in a query value, and encoding them
+        // would inflate the code for no gain.
+        val extras = alternates.filterNot { it.contains("127.0.0.1") }.distinct()
+        when {
+            primary == null -> null
+            extras.isEmpty() -> primary
+            else -> primary + "&a=" + android.net.Uri.encode(extras.joinToString(","), ":/,")
         }
     }
     val qr = remember(payload) { payload?.let { encodeQr(it, 640) } }

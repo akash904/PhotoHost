@@ -50,7 +50,13 @@ import dev.gpicalter.core.Prefs
 private const val TAG = "gpic"
 
 /** What a pairing QR resolves to. */
-data class PairingInfo(val baseUrl: String, val token: String, val fingerprint: String? = null)
+data class PairingInfo(
+    val baseUrl: String,
+    val token: String,
+    val fingerprint: String? = null,
+    /** The server's other addresses, so a client is never left knowing only one. */
+    val alternates: List<String> = emptyList(),
+)
 
 /**
  * Parses a pairing payload.
@@ -72,7 +78,13 @@ fun parsePairing(raw: String?): PairingInfo? {
         // is not fatal, but it means falling back to platform trust, which will reject a
         // self-signed certificate -- so it is surfaced rather than silently accepted.
         val fingerprint = uri.getQueryParameter("f")?.takeIf { it.length == 64 }
-        PairingInfo("$scheme://$host$port", token, fingerprint)
+        // Older codes have no alternates, and a client scanning one is no worse off than before.
+        val alternates = uri.getQueryParameter("a")
+            .orEmpty()
+            .split(',')
+            .map { it.trim() }
+            .filter { it.startsWith("http://") || it.startsWith("https://") }
+        PairingInfo("$scheme://$host$port", token, fingerprint, alternates)
     } catch (t: Throwable) {
         null
     }
@@ -142,9 +154,13 @@ fun ScanQrScreen(prefs: Prefs, onPaired: (String) -> Unit, onClose: () -> Unit) 
                                         prefs.serverUrl = info.baseUrl
                                         prefs.remoteToken = info.token
                                         prefs.serverFingerprint = info.fingerprint
-                                        // Candidates from a previous server would be probed and
-                                        // could silently win, pointing the app at the old library.
-                                        prefs.serverCandidates = emptyList()
+                                        // Replaced, not merely cleared. Candidates from a previous
+                                        // server would be probed and could silently win, pointing
+                                        // the app at the old library -- but clearing them and
+                                        // storing nothing leaves this client knowing only the
+                                        // address in the code, which is useless if the scanning
+                                        // phone cannot reach that one.
+                                        prefs.serverCandidates = info.alternates
                                         status = "Paired with ${info.baseUrl}"
                                         provider.unbindAll()
                                         onPaired(info.baseUrl)

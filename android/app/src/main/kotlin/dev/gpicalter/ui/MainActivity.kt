@@ -193,6 +193,7 @@ private fun GpicApp() {
                 token = container.prefs.token(),
                 httpsUrl = server.httpsUrl,
                 fingerprint = server.tlsFingerprint,
+                alternates = server.pairUrls,
                 onClose = { showingQr = false },
             )
         }

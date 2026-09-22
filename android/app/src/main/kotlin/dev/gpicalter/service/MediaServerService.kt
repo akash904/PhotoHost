@@ -202,6 +202,7 @@ class MediaServerService : Service() {
                 token = token,
                 httpsUrl = tls?.let { _ -> secureUrl(port) },
                 tlsFingerprint = tls?.fingerprint,
+                pairUrls = advertisedUrls(port, tls != null),
                 error = null,
             )
         }
@@ -273,6 +274,20 @@ class MediaServerService : Service() {
      * when there is no remote path at all -- which, behind carrier NAT and without Tailscale, is the
      * normal case rather than an edge one.
      */
+    /**
+     * Every address a client could use, plain and TLS, in preference order.
+     *
+     * Built from the display list rather than every interface: an address not worth showing a person
+     * is not worth spending QR density on either, and a denser code is a code that fails to scan in
+     * poor light.
+     */
+    private fun advertisedUrls(port: Int, tls: Boolean): List<String> {
+        val endpoints = NetInterfaces.displayEndpoints()
+        val plain = endpoints.map { "http://${it.host}:$port" }
+        val secure = if (tls) endpoints.map { "https://${it.host}:${port + 363}" } else emptyList()
+        return plain + secure
+    }
+
     private fun secureUrl(port: Int): String? {
         val endpoint = NetInterfaces.remoteEndpoint() ?: NetInterfaces.endpoints().firstOrNull()
         return endpoint?.let { "https://${it.host}:${port + 363}" }
@@ -299,12 +314,13 @@ class MediaServerService : Service() {
         val port = container.prefs.port
         val urls = endpoints.map { "${it.label}: ${it.url(port)}" }
         val secure = ServerState.state.value.tlsFingerprint?.let { secureUrl(port) }
+        val pairs = advertisedUrls(port, ServerState.state.value.tlsFingerprint != null)
         ServerState.update { current ->
-            if (current.urls == urls && current.httpsUrl == secure) {
+            if (current.urls == urls && current.httpsUrl == secure && current.pairUrls == pairs) {
                 current
             } else {
                 Log.i(TAG, "addresses changed: $urls")
-                current.copy(urls = urls, httpsUrl = secure)
+                current.copy(urls = urls, httpsUrl = secure, pairUrls = pairs)
             }
         }
     }

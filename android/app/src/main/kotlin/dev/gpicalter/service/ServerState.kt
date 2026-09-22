@@ -26,6 +26,15 @@ object ServerState {
         val scanNote: String? = null,
         val httpsUrl: String? = null,
         val tlsFingerprint: String? = null,
+        /**
+         * Every address a pairing code should hand over, plain and TLS.
+         *
+         * Carried in the QR so a freshly paired client knows all of them immediately. Without it a
+         * client knows only the address it paired against, and if that one is unreachable -- paired
+         * over Wi-Fi from a code advertising a VPN address, say -- it has no way to discover any
+         * other and no way to recover.
+         */
+        val pairUrls: List<String> = emptyList(),
     )
 
     private val _state = MutableStateFlow(Snapshot())
