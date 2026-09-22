@@ -191,7 +191,7 @@ class MediaServerService : Service() {
             container.remoteAccess.keepOpen(scope, port + 363)
         }
 
-        val urls = NetInterfaces.endpoints().map { "${it.label}: ${it.url(port)}" }
+        val urls = NetInterfaces.displayEndpoints().map { "${it.label}: ${it.url(port)}" }
         ServerState.update {
             it.copy(
                 running = true,
@@ -292,7 +292,7 @@ class MediaServerService : Service() {
      * certificate would break all of them to fix something none of them check.
      */
     private fun refreshAddresses() {
-        val endpoints = NetInterfaces.endpoints()
+        val endpoints = NetInterfaces.displayEndpoints()
         // An empty list means the network is mid-reconfiguration, not that the phone has no
         // addresses. Publishing that would blank the pairing screen for no reason.
         if (endpoints.isEmpty()) return

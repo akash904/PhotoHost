@@ -91,6 +91,26 @@ object NetInterfaces {
             ?: all.firstOrNull { it.host.startsWith("[") }
     }
 
+    /**
+     * The endpoints worth listing on screen.
+     *
+     * When Tailscale is up it is the way in from outside, and the global IPv6 address becomes noise:
+     * it is long, it changes whenever the ISP re-delegates the prefix, and behind a router that
+     * drops inbound traffic it reaches nothing. Showing it only invites pairing against an address
+     * that cannot work and will not stay put.
+     *
+     * Without Tailscale it is kept, because it is then the only candidate for reaching the library
+     * from outside, and hiding the only option is worse than showing a difficult one.
+     *
+     * [endpoints] stays unfiltered, since the certificate should name every address the server might
+     * be reached at whether or not the address is worth putting in front of a person.
+     */
+    fun displayEndpoints(): List<Endpoint> {
+        val all = endpoints()
+        if (all.none { it.label == TAILSCALE }) return all
+        return all.filterNot { it.label.contains("IPv6") }
+    }
+
     /** Whether a Tailscale interface is up, which changes what remote access has to do. */
     fun hasTailscale(): Boolean = endpoints().any { it.label == TAILSCALE }
 
