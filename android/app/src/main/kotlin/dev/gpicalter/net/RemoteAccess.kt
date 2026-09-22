@@ -3,6 +3,7 @@ package dev.gpicalter.net
 import android.content.Context
 import android.net.ConnectivityManager
 import android.util.Log
+import dev.gpicalter.server.NetInterfaces
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -57,14 +58,21 @@ object RemoteState {
  * ### The shape of the problem
  * For an unsolicited connection to cross a home router, exactly one of two things must be true: the
  * border was told to permit it, or both ends dial out to a meeting point in the middle. There is no
- * third mechanism. This class pursues the first, because the second means running an intermediary.
+ * third mechanism, and this handles both.
  *
  * Telling the border can be done by a person editing a firewall table, or by the app asking over one
  * of the three protocols that exist for asking -- see [PortMapper]. Asking is strictly better: it
  * needs no admin password, survives the phone changing address, and works the same on every router
- * that supports it. When no protocol is available this reports that plainly instead of leaving the
- * user to wonder, because the honest next step then is a one-time router change or a VPN, and
- * pretending otherwise just wastes their evening.
+ * that supports it.
+ *
+ * The meeting point is Tailscale, and when it is up there is nothing to ask for: neither end ever
+ * accepts an unsolicited connection, so no router is involved. That case is detected first and short
+ * circuits the rest, because running the port-mapping attempt anyway would report a failure that
+ * carries no information.
+ *
+ * When neither is available this says so plainly rather than leaving the user to wonder. Behind
+ * carrier-grade NAT -- where the ISP translates before the connection reaches the router -- no
+ * amount of router configuration can help, and saying that early saves an evening.
  *
  * ### Why it is opt-in
  * Opening a port to the internet is a real decision. What protects the library once it is open is the
@@ -82,6 +90,35 @@ class RemoteAccess(private val context: Context) {
      */
     suspend fun open(port: Int): PortMapper.Report = withContext(Dispatchers.IO) {
         RemoteState.update { it.copy(attempting = true) }
+
+        // Tailscale already solves this, by never needing an inbound connection at all: both ends
+        // dial out and the resulting firewall state is what lets each other's packets through. So
+        // there is nothing to ask the router for, and asking anyway would report a failure that
+        // means nothing.
+        NetInterfaces.remoteEndpoint()?.takeIf { NetInterfaces.hasTailscale() }?.let { endpoint ->
+            val report = PortMapper.Report(
+                opened = true,
+                via = "Tailscale",
+                externalIpv4 = null,
+                leaseSeconds = 0,
+                lines = listOf("Tailscale is up; no router change is needed"),
+            )
+            RemoteState.update {
+                it.copy(
+                    attempting = false,
+                    attemptedAt = System.currentTimeMillis(),
+                    opened = true,
+                    via = "Tailscale",
+                    summary = "Reachable over Tailscale",
+                    routerWanIpv4 = null,
+                    carrierNat = false,
+                    publicUrl = "https://${endpoint.host}:$port",
+                    lines = report.lines,
+                )
+            }
+            return@withContext report
+        }
+
         val lan = lanIpv4()
         val v6 = stableGlobalIpv6()
         val gateways = gateways()
@@ -165,6 +202,23 @@ class RemoteAccess(private val context: Context) {
             return
         }
 
+        if (isTailscaleHost(host)) {
+            // The probe binds its socket to the cellular network on purpose, and binding to a
+            // specific network bypasses the VPN. A tailnet address is only routable *through* that
+            // VPN, so this test could only ever report a failure that means nothing. Reaching the
+            // library from another device on the tailnet is the real check.
+            RemoteState.update {
+                it.copy(
+                    testing = false,
+                    testPassed = null,
+                    testResult = "Not applicable over Tailscale. This test dials over mobile data, " +
+                        "which deliberately bypasses the VPN, so it cannot reach a tailnet address. " +
+                        "Open the library from another device signed into your tailnet instead.",
+                )
+            }
+            return
+        }
+
         RemoteState.update { it.copy(testing = true, testResult = null, testPassed = null) }
         val result = RemoteProbe(context).overCellular(host, port, fingerprint)
         val (passed, text) = when (result) {
@@ -184,6 +238,12 @@ class RemoteAccess(private val context: Context) {
                 false to "Test did not run: ${result.detail}"
         }
         RemoteState.update { it.copy(testing = false, testPassed = passed, testResult = text) }
+    }
+
+    /** Tailscale hands out addresses from 100.64.0.0/10, the range reserved for carrier NAT. */
+    private fun isTailscaleHost(host: String): Boolean {
+        val parts = host.trim('[', ']').split('.').mapNotNull { it.toIntOrNull() }
+        return parts.size == 4 && parts[0] == 100 && parts[1] in 64..127
     }
 
     // ------------------------------------------------------------------ addresses

@@ -56,6 +56,27 @@ object NetInterfaces {
         }
     }
 
+    /**
+     * The address to hand a client that is not on this Wi-Fi, or null when there is none.
+     *
+     * Tailscale ranks first because it is the only address here that works without the router being
+     * reconfigured -- and on a connection behind carrier NAT it is the only one that works at all.
+     * A global IPv6 address is next, and only reaches anything if the router has been told to allow
+     * inbound traffic to it.
+     *
+     * A LAN address is never returned. Handing someone 192.168.x.y as a remote endpoint produces a
+     * connection timeout they will read as "the server is down", which is worse than being told
+     * plainly that there is no remote address yet.
+     */
+    fun remoteEndpoint(): Endpoint? {
+        val all = endpoints()
+        return all.firstOrNull { it.label == TAILSCALE }
+            ?: all.firstOrNull { it.host.startsWith("[") }
+    }
+
+    /** Whether a Tailscale interface is up, which changes what remote access has to do. */
+    fun hasTailscale(): Boolean = endpoints().any { it.label == TAILSCALE }
+
     private fun labelFor(name: String): String = when {
         name.startsWith("tailscale") -> TAILSCALE
         name.startsWith("wlan") -> "Wi-Fi"

@@ -200,13 +200,7 @@ class MediaServerService : Service() {
                 backend = store.kind.name,
                 urls = urls,
                 token = token,
-                httpsUrl = tls?.let { _ ->
-                    // Prefer an address reachable from outside; a LAN address over TLS still works
-                    // but defeats the point of showing a secure code.
-                    val eps = NetInterfaces.endpoints()
-                    val pick = eps.firstOrNull { it.host.startsWith("[") } ?: eps.firstOrNull()
-                    pick?.let { "https://${it.host}:${port + 363}" }
-                },
+                httpsUrl = tls?.let { _ -> secureUrl(port) },
                 tlsFingerprint = tls?.fingerprint,
                 error = null,
             )
@@ -272,6 +266,19 @@ class MediaServerService : Service() {
     }
 
     /**
+     * The HTTPS address to show in the pairing QR.
+     *
+     * A remote-capable address when one exists, since that code is usually being scanned so the
+     * other phone works away from home. Falls back to a LAN address so pairing still works at home
+     * when there is no remote path at all -- which, behind carrier NAT and without Tailscale, is the
+     * normal case rather than an edge one.
+     */
+    private fun secureUrl(port: Int): String? {
+        val endpoint = NetInterfaces.remoteEndpoint() ?: NetInterfaces.endpoints().firstOrNull()
+        return endpoint?.let { "https://${it.host}:${port + 363}" }
+    }
+
+    /**
      * Re-reads the phone's addresses, because they change underneath a running server.
      *
      * Observed on Airtel: the delegated IPv6 prefix rotated overnight, so the phone kept its
@@ -291,10 +298,7 @@ class MediaServerService : Service() {
         if (endpoints.isEmpty()) return
         val port = container.prefs.port
         val urls = endpoints.map { "${it.label}: ${it.url(port)}" }
-        val secure = ServerState.state.value.tlsFingerprint?.let {
-            val preferred = endpoints.firstOrNull { e -> e.host.startsWith("[") } ?: endpoints.first()
-            "https://${preferred.host}:${port + 363}"
-        }
+        val secure = ServerState.state.value.tlsFingerprint?.let { secureUrl(port) }
         ServerState.update { current ->
             if (current.urls == urls && current.httpsUrl == secure) {
                 current
