@@ -45,7 +45,9 @@ import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -129,6 +131,10 @@ fun LibraryScreen(
             TextButton(onClick = { vm.favoriteSelected(true) }) { Text("★") }
             TextButton(onClick = { confirmDelete = true }) { Text("Delete") }
         }
+    }
+
+    if (state.selected.isEmpty() && state.knownAddresses.isNotEmpty()) {
+        ConnectionBar(active = state.endpoint, known = state.knownAddresses)
     }
 
     Row(Modifier.fillMaxSize()) {
@@ -358,6 +364,112 @@ private fun Scrubber(vm: LibraryViewModel) {
                 )
             }
         }
+    }
+}
+
+/**
+ * A one-line summary of how the app is reaching the library, expanding to the full list.
+ *
+ * The app silently moves between a VPN address and a LAN one as networks come and go, which is the
+ * behaviour people want and also completely invisible -- so a library that loads slowly over a VPN
+ * while sitting next to the server looks like the app being slow rather than like a routing choice
+ * the user could make differently.
+ *
+ * Collapsed by default, because this is an answer to an occasional question and not something worth
+ * a permanent two lines above the photos.
+ */
+@Composable
+private fun ConnectionBar(active: String, known: List<String>) {
+    var expanded by remember { mutableStateOf(false) }
+    // One row per kind of route rather than per URL: the server advertises plain and TLS variants of
+    // every address, and six rows that are really three distinct answers obscures the one fact this
+    // is here to convey.
+    val grouped = remember(active, known) {
+        known.groupBy(::addressLabel)
+            .map { (label, urls) -> label to (urls.firstOrNull { it == active } ?: urls.first()) }
+    }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable { expanded = !expanded }
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("●", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                "Connected over ${addressLabel(active)}",
+                Modifier.weight(1f),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(if (expanded) "▲" else "▼", fontSize = 9.sp)
+        }
+        if (expanded) {
+            grouped.forEach { (label, url) ->
+                val isActive = url == active
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        if (isActive) "●" else "○",
+                        fontSize = 9.sp,
+                        color = if (isActive) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(label, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        url,
+                        Modifier.weight(1f),
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Text(
+                "Tried top to bottom. The first that answers wins, and it is rechecked whenever the network changes.",
+                fontSize = 10.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
+    }
+}
+
+/**
+ * Names a route from its address, rather than storing a label alongside it.
+ *
+ * The server does send labels, but deriving them here keeps the stored candidate list a plain list
+ * of URLs -- and the ranges are unambiguous enough that there is nothing to get wrong: 100.64/10 is
+ * what Tailscale hands out, and the RFC 1918 ranges are what a home router hands out.
+ */
+private fun addressLabel(url: String): String {
+    val hostPort = url.substringAfter("://")
+    val host = if (hostPort.startsWith("[")) {
+        hostPort.substringAfter('[').substringBefore(']')
+    } else {
+        hostPort.substringBefore(':')
+    }
+    val octets = host.split('.').mapNotNull { it.toIntOrNull() }
+    return when {
+        host == "127.0.0.1" || host == "::1" -> "This phone"
+        octets.size == 4 && octets[0] == 100 && octets[1] in 64..127 -> "Tailscale"
+        octets.size == 4 && octets[0] == 10 -> "Wi-Fi"
+        octets.size == 4 && octets[0] == 192 && octets[1] == 168 -> "Wi-Fi"
+        octets.size == 4 && octets[0] == 172 && octets[1] in 16..31 -> "Wi-Fi"
+        host.contains(':') -> "IPv6"
+        else -> host
     }
 }
 

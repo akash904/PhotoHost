@@ -27,6 +27,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         val reachable: Boolean = true,
         val error: String? = null,
         val endpoint: String = "",
+        /** Every address this client knows about, so the UI can show what it is choosing between. */
+        val knownAddresses: List<String> = emptyList(),
         /** Empty means normal browsing; non-empty puts the grid in selection mode. */
         val selected: Set<Long> = emptySet(),
     )
@@ -60,6 +62,18 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
      * The reload is conditional because most network changes do not move the address -- reloading
      * the grid regardless would throw away the user's scroll position to arrive at the same place.
      */
+    /**
+     * The addresses the client would try, in the order it would try them.
+     *
+     * Read from preferences rather than held separately, so what the UI shows is the same list
+     * [dev.gpicalter.net.LibraryApi.resolveEndpoint] actually walks -- a display that drifted from
+     * the real order would be worse than none.
+     */
+    private fun knownAddresses(): List<String> = buildList {
+        container.prefs.serverUrl?.let { add(it) }
+        addAll(container.prefs.serverCandidates)
+    }.distinct()
+
     private fun watchNetwork() = viewModelScope.launch {
         container.network.changes.drop(1).collectLatest {
             delay(800)
@@ -82,9 +96,14 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             // since the last one, which changes which address is reachable.
             api.invalidateEndpoint()
             val endpoint = api.resolveEndpoint()
-            _state.update { it.copy(endpoint = endpoint, loading = false) }
+            _state.update {
+                it.copy(endpoint = endpoint, knownAddresses = knownAddresses(), loading = false)
+            }
             loadMore()
             api.refreshEndpoints()
+            // Re-read after the refresh: this is the call that discovers the addresses beyond the
+            // one this client paired against, so before it the list is just that single address.
+            _state.update { it.copy(knownAddresses = knownAddresses()) }
             val buckets = api.buckets()
             _state.update { it.copy(buckets = buckets) }
         }
