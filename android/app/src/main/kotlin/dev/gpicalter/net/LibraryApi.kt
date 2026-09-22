@@ -99,6 +99,20 @@ class LibraryApi(
     private val _activeEndpoint = MutableStateFlow<String?>(null)
     val activeEndpoint: StateFlow<String?> = _activeEndpoint.asStateFlow()
 
+    /**
+     * How many consecutive sweeps found nothing, and when the last one ended.
+     *
+     * A transport failure drops the cached address, so while the library is unreachable every single
+     * request triggers a fresh sweep of every candidate. With six addresses at two seconds each that
+     * is twelve seconds of radio per attempt, repeating for as long as the outage lasts -- which is
+     * precisely when the phone is least likely to be on a charger.
+     */
+    @Volatile
+    private var failedSweeps = 0
+
+    @Volatile
+    private var lastFailedSweepAt = 0L
+
     /** Why the last request failed. Without this, every network problem looks identical. */
     @Volatile
     var lastError: String? = null
@@ -127,8 +141,17 @@ class LibraryApi(
         }.distinct()
         if (candidates.isEmpty()) return prefs.baseUrl()
 
+        val quietFor = backoffMillis()
+        if (failedSweeps > 0 && System.currentTimeMillis() - lastFailedSweepAt < quietFor) {
+            // Still inside the quiet period after a sweep that found nothing. Returning the
+            // preferred address without probing keeps error messages naming something meaningful
+            // while the radio stays idle.
+            return candidates.first()
+        }
+
         for (candidate in candidates) {
             if (reachable(candidate)) {
+                failedSweeps = 0
                 activeBase = candidate
                 // Logged on every successful probe, not only on a change. When the question is
                 // "which way is it talking to the library right now", inferring it from which
@@ -139,13 +162,37 @@ class LibraryApi(
             android.util.Log.i("gpic", "no answer from $candidate")
         }
         // Nothing answered. Keep the preferred address so the error names something meaningful.
-        android.util.Log.w("gpic", "no candidate answered; ${candidates.size} tried")
+        failedSweeps++
+        lastFailedSweepAt = System.currentTimeMillis()
+        android.util.Log.w(
+            "gpic",
+            "no candidate answered; ${candidates.size} tried, " +
+                "not sweeping again for ${backoffMillis() / 1000}s",
+        )
         return candidates.first()
     }
 
-    /** Forces the next call to re-probe, e.g. after moving between networks. */
+    /**
+     * Forces the next call to re-probe, e.g. after moving between networks.
+     *
+     * Also clears the backoff, because every caller of this is a reason to believe the answer has
+     * changed -- the user asked, or the network did something. Making them wait out a quiet period
+     * earned by earlier failures would defeat the point of asking.
+     */
     fun invalidateEndpoint() {
         activeBase = null
+        failedSweeps = 0
+    }
+
+    /**
+     * How long to stay quiet after a sweep that found nothing: 2s, 4s, 8s, 16s, then 30s.
+     *
+     * Capped rather than unbounded, since the app should still notice unaided when a network comes
+     * back -- the cap is what keeps an unattended phone from taking minutes to recover.
+     */
+    private fun backoffMillis(): Long = when {
+        failedSweeps <= 0 -> 0L
+        else -> ((1L shl minOf(failedSweeps, 5)) * 1_000L).coerceAtMost(30_000L)
     }
 
     /**
@@ -166,6 +213,8 @@ class LibraryApi(
             name.contains("Timeout", ignoreCase = true) ||
             name.contains("Connect", ignoreCase = true) ||
             name.contains("UnresolvedAddress", ignoreCase = true)
+        // Deliberately does not touch failedSweeps: this is the very churn the backoff exists to
+        // damp, so letting it reset the counter would make the backoff unreachable.
         if (transport) activeBase = null
     }
 

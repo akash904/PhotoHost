@@ -79,9 +79,18 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             delay(800)
             api.invalidateEndpoint()
             val resolved = api.resolveEndpoint()
-            if (resolved != _state.value.endpoint) {
-                android.util.Log.i("gpic", "library address moved to $resolved")
-                refresh()
+            // resolveEndpoint returns a preferred address even when none answered, so that error
+            // messages can name something. activeEndpoint is set only by an address that actually
+            // replied, which is what distinguishes "we moved" from "we found nothing".
+            val live = api.activeEndpoint.value != null
+            when {
+                !live ->
+                    android.util.Log.i("gpic", "no address answered after a network change")
+
+                resolved != _state.value.endpoint -> {
+                    android.util.Log.i("gpic", "library address moved to $resolved")
+                    refresh()
+                }
             }
         }
     }
