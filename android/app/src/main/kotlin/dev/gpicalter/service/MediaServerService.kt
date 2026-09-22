@@ -208,6 +208,7 @@ class MediaServerService : Service() {
         }
         container.prefs.wasRunning = true
         Log.i(TAG, "server up on :$port, backend ${store.kind}, volumeId=$volumeId, urls=$urls")
+        Log.i(TAG, "pairing code will carry: ${ServerState.state.value.pairUrls}")
         notify(buildNotification("Serving ${store.label} on :$port"))
 
         startHeartbeat()
