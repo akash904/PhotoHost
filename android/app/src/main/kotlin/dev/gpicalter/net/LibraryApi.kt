@@ -91,11 +91,17 @@ class LibraryApi(
     fun baseUrl(): String = activeBase ?: prefs.baseUrl()
 
     /**
-     * Picks the first candidate that answers, preferring whatever the server listed first -- the
-     * LAN address before a Tailscale one, so being at home does not route through a VPN hop.
+     * Picks the first candidate that answers.
      *
-     * Probes run with a short timeout: an address that is not on this network fails fast by
-     * design, and waiting the full request timeout on each would make startup feel broken.
+     * The address this client paired against is tried first, then the others the server advertised,
+     * in the order it listed them. So a phone paired over a VPN keeps using that path even at home,
+     * where the LAN address would be a shorter route -- correct, but not the fastest one available.
+     * Changing that means deciding whether a cleartext LAN address should win over a pinned one,
+     * which is a security question rather than a routing one, so it is left alone deliberately.
+     *
+     * Probes run with a short timeout: an address that is not on this network fails fast by design,
+     * and waiting the full request timeout on each would make startup feel broken. The cost of an
+     * unreachable first candidate is therefore one short timeout, not a hang.
      */
     suspend fun resolveEndpoint(): String {
         activeBase?.let { return it }
@@ -118,6 +124,27 @@ class LibraryApi(
     /** Forces the next call to re-probe, e.g. after moving between networks. */
     fun invalidateEndpoint() {
         activeBase = null
+    }
+
+    /**
+     * Drops the cached address when a failure says it is no longer reachable.
+     *
+     * A connection that refuses, times out or cannot resolve means the address itself is wrong now
+     * -- a VPN went away, the phone moved, the server changed address. Without this the app keeps
+     * dialling it until something else forces a re-probe, and every request fails the same way for
+     * as long as that takes.
+     *
+     * An HTTP status is deliberately not treated this way. A 401 or a 500 proves the address is
+     * right and something else is wrong, and re-probing would hide the real problem behind a
+     * changing endpoint.
+     */
+    private fun noteTransportFailure(t: Throwable) {
+        val name = t.javaClass.simpleName
+        val transport = t is java.io.IOException ||
+            name.contains("Timeout", ignoreCase = true) ||
+            name.contains("Connect", ignoreCase = true) ||
+            name.contains("UnresolvedAddress", ignoreCase = true)
+        if (transport) activeBase = null
     }
 
     private suspend fun reachable(base: String): Boolean = try {
@@ -331,6 +358,7 @@ class LibraryApi(
         }
     } catch (t: Throwable) {
         lastError = "${t.javaClass.simpleName}: ${t.message}"
+        noteTransportFailure(t)
         android.util.Log.w("gpic", "api $path failed", t)
         null
     }

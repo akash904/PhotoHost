@@ -8,7 +8,10 @@ import dev.gpicalter.net.BucketDto
 import dev.gpicalter.net.TimelineItemDto
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -41,6 +44,32 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         refresh()
+        watchNetwork()
+    }
+
+    /**
+     * Re-probes when the phone changes network, and reloads only if the working address moved.
+     *
+     * Switching a VPN on or off changes which address reaches the library, and the cached one is
+     * then wrong in a way that looks like the server being down rather than like a routing change.
+     *
+     * `collectLatest` with a short delay is the debounce: a single switch reports several changes in
+     * a second as interfaces come and go, and each new report cancels the pending probe rather than
+     * queueing another one.
+     *
+     * The reload is conditional because most network changes do not move the address -- reloading
+     * the grid regardless would throw away the user's scroll position to arrive at the same place.
+     */
+    private fun watchNetwork() = viewModelScope.launch {
+        container.network.changes.drop(1).collectLatest {
+            delay(800)
+            api.invalidateEndpoint()
+            val resolved = api.resolveEndpoint()
+            if (resolved != _state.value.endpoint) {
+                android.util.Log.i("gpic", "library address moved to $resolved")
+                refresh()
+            }
+        }
     }
 
     fun refresh() {

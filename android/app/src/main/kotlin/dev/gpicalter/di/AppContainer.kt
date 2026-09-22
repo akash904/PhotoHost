@@ -11,6 +11,7 @@ import coil3.memory.MemoryCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import dev.gpicalter.data.entity.VolumeEntity
 import dev.gpicalter.net.LibraryApi
+import dev.gpicalter.net.NetworkWatcher
 import dev.gpicalter.net.RemoteAccess
 import dev.gpicalter.net.Pinning
 import okhttp3.OkHttpClient
@@ -40,6 +41,9 @@ class AppContainer private constructor(context: Context) {
      * overwrite its result.
      */
     val remoteAccess: RemoteAccess by lazy { RemoteAccess(app) }
+
+    /** Started on first use and never stopped: it lives as long as the process does. */
+    val network: NetworkWatcher by lazy { NetworkWatcher(app).also { it.start() } }
 
     /**
      * Thumbnails are authenticated like every other route, so the image loader has to carry the
