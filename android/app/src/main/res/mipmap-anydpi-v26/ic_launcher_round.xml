@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Identical to ic_launcher by design. An adaptive icon already masks itself to whatever shape the
+  launcher asks for, so the round variant exists only because some launchers still look up
+  android:roundIcon by name and fall back to the framework default when it is missing.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
+</adaptive-icon>

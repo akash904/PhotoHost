@@ -82,9 +82,9 @@ class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             },
         )
         val notification: Notification = Notification.Builder(applicationContext, CHANNEL)
-            .setContentTitle("gpicAlter")
+            .setContentTitle("Hearth")
             .setContentText(text)
-            .setSmallIcon(android.R.drawable.stat_sys_upload)
+            .setSmallIcon(dev.gpicalter.R.drawable.ic_stat_hearth)
             .setOngoing(true)
             .build()
 

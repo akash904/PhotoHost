@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Taken from GpicDarkColors in MainActivity, so the icon and the app it opens are the
+         same two colours rather than merely similar ones. -->
+    <color name="ic_launcher_background">#101114</color>
+    <color name="hearth_flame">#7CC7FF</color>
+</resources>
