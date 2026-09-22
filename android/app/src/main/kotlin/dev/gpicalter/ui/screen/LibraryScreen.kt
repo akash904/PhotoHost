@@ -47,6 +47,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -62,6 +63,8 @@ import dev.gpicalter.ui.GridEntry
 import dev.gpicalter.ui.JustifiedGrid
 import dev.gpicalter.ui.LibraryViewModel
 import dev.gpicalter.ui.components.addressLabel
+import dev.gpicalter.ui.components.diagnose
+import dev.gpicalter.ui.components.friendlyError
 
 private const val GAP_DP = 2
 
@@ -135,7 +138,13 @@ fun LibraryScreen(
     }
 
     if (state.selected.isEmpty() && state.knownAddresses.isNotEmpty()) {
-        ConnectionBar(active = state.endpoint, known = state.knownAddresses)
+        ConnectionBar(
+            active = state.endpoint,
+            known = state.knownAddresses,
+            // Without this the bar reads the fallback address as though it were live, and cheerfully
+            // says "Connected over Tailscale" directly above the words "Library unreachable".
+            live = state.reachable,
+        )
     }
 
     Row(Modifier.fillMaxSize()) {
@@ -153,6 +162,7 @@ fun LibraryScreen(
                 state.items.isEmpty() && !state.reachable -> Unreachable(
                     endpoint = state.endpoint,
                     error = state.error,
+                    knownAddresses = state.knownAddresses,
                     retrying = state.loading,
                     onRetry = vm::refresh,
                 )
@@ -380,7 +390,7 @@ private fun Scrubber(vm: LibraryViewModel) {
  * a permanent two lines above the photos.
  */
 @Composable
-private fun ConnectionBar(active: String, known: List<String>) {
+private fun ConnectionBar(active: String, known: List<String>, live: Boolean) {
     var expanded by remember { mutableStateOf(false) }
     // One row per kind of route rather than per URL: the server advertises plain and TLS variants of
     // every address, and six rows that are really three distinct answers obscures the one fact this
@@ -398,10 +408,18 @@ private fun ConnectionBar(active: String, known: List<String>) {
             .padding(horizontal = 12.dp, vertical = 6.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("●", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
+            Text(
+                if (live) "●" else "○",
+                fontSize = 10.sp,
+                color = if (live) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
             Spacer(Modifier.width(6.dp))
             Text(
-                "Connected over ${addressLabel(active)}",
+                if (live) "Connected over ${addressLabel(active)}" else "Not connected",
                 Modifier.weight(1f),
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
@@ -410,7 +428,7 @@ private fun ConnectionBar(active: String, known: List<String>) {
         }
         if (expanded) {
             grouped.forEach { (label, url) ->
-                val isActive = url == active
+                val isActive = live && url == active
                 Row(
                     Modifier.fillMaxWidth().padding(top = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -451,43 +469,72 @@ private fun ConnectionBar(active: String, known: List<String>) {
 /**
  * Shown when no address answered.
  *
- * The retry matters more here than anywhere else in the app. The usual reasons for landing on this
- * screen -- a VPN coming up, joining Wi-Fi, the server being started on the other phone -- are all
- * things the user has just fixed by hand, and they arrive here wanting to say "try again now". The
- * automatic re-probe covers the cases the system reports as a network change, but not the ones it
- * has no way to know about, and without a button the only recovery was to guess that the empty
- * screen could still be pulled down.
+ * The old version stated the symptom and printed the exception, which tells the reader nothing they
+ * can act on -- the phone already knows whether it has a network, whether it is on Wi-Fi and whether
+ * Tailscale is up, and each of those has a different first thing to try. It says that instead, with
+ * the technical detail kept but demoted.
+ *
+ * The retry matters more here than anywhere else in the app. Every cause listed is something the
+ * user fixes by hand and then wants to say "now try again": the automatic re-probe covers changes
+ * the system announces, but not a server being started on the other phone.
  */
 @Composable
 private fun Unreachable(
     endpoint: String,
     error: String?,
+    knownAddresses: List<String>,
     retrying: Boolean,
     onRetry: () -> Unit,
 ) {
+    val context = LocalContext.current
+    var showDetail by remember { mutableStateOf(false) }
+    // Recomputed on each retry, since the whole point is that the user has just changed something.
+    val diagnosis = remember(knownAddresses, retrying) { diagnose(context, knownAddresses) }
+
     Centered {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(24.dp),
+            modifier = Modifier.padding(horizontal = 28.dp),
         ) {
-            Text("Library unreachable", style = MaterialTheme.typography.titleMedium)
             Text(
-                endpoint,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                diagnosis.headline,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
             )
-            if (error != null) {
+            friendlyError(error)?.let {
                 Text(
-                    error,
+                    it,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(top = 8.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 6.dp),
                 )
             }
+
+            Column(Modifier.padding(top = 20.dp)) {
+                diagnosis.steps.forEachIndexed { index, step ->
+                    Row(Modifier.padding(bottom = 10.dp)) {
+                        Text(
+                            "${index + 1}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.width(20.dp),
+                        )
+                        Text(
+                            step,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+            }
+
             Button(
                 onClick = onRetry,
                 enabled = !retrying,
-                modifier = Modifier.padding(top = 20.dp),
+                modifier = Modifier.padding(top = 8.dp),
             ) {
                 if (retrying) {
                     CircularProgressIndicator(
@@ -500,17 +547,37 @@ private fun Unreachable(
                 Text(if (retrying) "Checking..." else "Try again")
             }
             Text(
-                "Every known address is retried, so this also picks up a VPN or Wi-Fi you just turned on.",
+                "Retries every address it knows, so it picks up a VPN or Wi-Fi you just turned on.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 12.dp),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 10.dp),
             )
-            Text(
-                "Still failing? In Settings, start the server here or point this app at another one.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 6.dp),
-            )
+
+            TextButton(
+                onClick = { showDetail = !showDetail },
+                modifier = Modifier.padding(top = 4.dp),
+            ) { Text(if (showDetail) "Hide details" else "Details", fontSize = 12.sp) }
+
+            if (showDetail) {
+                Text(
+                    "Last tried: $endpoint",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+                error?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
         }
     }
 }
