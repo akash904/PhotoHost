@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -141,7 +143,12 @@ fun LibraryScreen(
             }
 
             when {
-                state.items.isEmpty() && !state.reachable -> Unreachable(state.endpoint, state.error)
+                state.items.isEmpty() && !state.reachable -> Unreachable(
+                    endpoint = state.endpoint,
+                    error = state.error,
+                    retrying = state.loading,
+                    onRetry = vm::refresh,
+                )
                 state.items.isEmpty() && state.loading -> Centered { CircularProgressIndicator() }
                 state.items.isEmpty() -> Centered {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -354,8 +361,23 @@ private fun Scrubber(vm: LibraryViewModel) {
     }
 }
 
+/**
+ * Shown when no address answered.
+ *
+ * The retry matters more here than anywhere else in the app. The usual reasons for landing on this
+ * screen -- a VPN coming up, joining Wi-Fi, the server being started on the other phone -- are all
+ * things the user has just fixed by hand, and they arrive here wanting to say "try again now". The
+ * automatic re-probe covers the cases the system reports as a network change, but not the ones it
+ * has no way to know about, and without a button the only recovery was to guess that the empty
+ * screen could still be pulled down.
+ */
 @Composable
-private fun Unreachable(endpoint: String, error: String?) {
+private fun Unreachable(
+    endpoint: String,
+    error: String?,
+    retrying: Boolean,
+    onRetry: () -> Unit,
+) {
     Centered {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -375,11 +397,32 @@ private fun Unreachable(endpoint: String, error: String?) {
                     modifier = Modifier.padding(top = 8.dp),
                 )
             }
+            Button(
+                onClick = onRetry,
+                enabled = !retrying,
+                modifier = Modifier.padding(top = 20.dp),
+            ) {
+                if (retrying) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(if (retrying) "Checking..." else "Try again")
+            }
             Text(
-                "Check Settings: start the server here, or point this app at another one.",
+                "Every known address is retried, so this also picks up a VPN or Wi-Fi you just turned on.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 12.dp),
+            )
+            Text(
+                "Still failing? In Settings, start the server here or point this app at another one.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 6.dp),
             )
         }
     }
