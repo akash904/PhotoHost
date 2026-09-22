@@ -114,10 +114,16 @@ class LibraryApi(
         for (candidate in candidates) {
             if (reachable(candidate)) {
                 activeBase = candidate
+                // Logged on every successful probe, not only on a change. When the question is
+                // "which way is it talking to the library right now", inferring it from which
+                // requests failed is guesswork, and this is one line.
+                android.util.Log.i("gpic", "library reachable at $candidate")
                 return candidate
             }
+            android.util.Log.i("gpic", "no answer from $candidate")
         }
         // Nothing answered. Keep the preferred address so the error names something meaningful.
+        android.util.Log.w("gpic", "no candidate answered; ${candidates.size} tried")
         return candidates.first()
     }
 
