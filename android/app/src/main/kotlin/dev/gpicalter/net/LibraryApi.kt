@@ -1,6 +1,9 @@
 package dev.gpicalter.net
 
 import dev.gpicalter.core.Prefs
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.okhttp.OkHttp
@@ -82,6 +85,19 @@ class LibraryApi(
      */
     @Volatile
     private var activeBase: String? = null
+        set(value) {
+            field = value
+            _activeEndpoint.value = value
+        }
+
+    /**
+     * The address in use right now, for screens that report it.
+     *
+     * Observable rather than a plain read, because the value changes underneath any screen showing
+     * it -- a VPN going down moves it seconds after the user last touched anything.
+     */
+    private val _activeEndpoint = MutableStateFlow<String?>(null)
+    val activeEndpoint: StateFlow<String?> = _activeEndpoint.asStateFlow()
 
     /** Why the last request failed. Without this, every network problem looks identical. */
     @Volatile

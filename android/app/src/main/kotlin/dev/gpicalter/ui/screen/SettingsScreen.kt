@@ -50,6 +50,7 @@ import dev.gpicalter.probe.ProbeActivity
 import dev.gpicalter.service.MediaServerService
 import dev.gpicalter.service.ServerState
 import dev.gpicalter.ui.components.CardHeader
+import dev.gpicalter.ui.components.addressLabel
 import dev.gpicalter.ui.components.Footnote
 import dev.gpicalter.ui.components.MonoLine
 import dev.gpicalter.ui.components.RowDivider
@@ -98,6 +99,9 @@ fun SettingsScreen(
     var showRouterTrace by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val net by RemoteState.state.collectAsStateWithLifecycle()
+    // The address actually in use, which is not always the one configured below: the app falls back
+    // to any address the server advertised when the configured one stops answering.
+    val active by container.api.activeEndpoint.collectAsStateWithLifecycle()
     // The TLS port. Derived the same way the service derives it, so the two cannot drift apart.
     val securePort = server.port + 363
 
@@ -306,9 +310,32 @@ fun SettingsScreen(
                 onClick = onScanPairingCode,
             )
             RowDivider()
+            CardHeader {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    StatusDot(active = active != null)
+                    Text(
+                        text = active?.let { "Connected over ${addressLabel(it)}" } ?: "Not connected",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(start = 10.dp),
+                    )
+                }
+                active?.let { MonoLine(it) }
+                // Only worth saying when the two differ, which is exactly when the address below
+                // would otherwise look like a lie.
+                if (active != null && remote.isNotBlank() && active != remote) {
+                    Text(
+                        text = "The address set below is not the one answering right now. The app " +
+                            "tries every address the server advertised and uses the first that " +
+                            "replies, so this changes on its own when a VPN or Wi-Fi comes and goes.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             RowDivider()
             SettingsRow(
-                title = if (remote.isBlank()) "This phone" else "Remote server",
+                title = if (remote.isBlank()) "This phone" else "Paired with",
                 subtitle = if (remote.isBlank()) {
                     "Browsing the library served here, over loopback"
                 } else {

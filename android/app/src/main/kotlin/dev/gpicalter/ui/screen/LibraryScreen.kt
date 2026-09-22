@@ -61,6 +61,7 @@ import dev.gpicalter.ui.Cell
 import dev.gpicalter.ui.GridEntry
 import dev.gpicalter.ui.JustifiedGrid
 import dev.gpicalter.ui.LibraryViewModel
+import dev.gpicalter.ui.components.addressLabel
 
 private const val GAP_DP = 2
 
@@ -444,32 +445,6 @@ private fun ConnectionBar(active: String, known: List<String>) {
                 modifier = Modifier.padding(top = 6.dp),
             )
         }
-    }
-}
-
-/**
- * Names a route from its address, rather than storing a label alongside it.
- *
- * The server does send labels, but deriving them here keeps the stored candidate list a plain list
- * of URLs -- and the ranges are unambiguous enough that there is nothing to get wrong: 100.64/10 is
- * what Tailscale hands out, and the RFC 1918 ranges are what a home router hands out.
- */
-private fun addressLabel(url: String): String {
-    val hostPort = url.substringAfter("://")
-    val host = if (hostPort.startsWith("[")) {
-        hostPort.substringAfter('[').substringBefore(']')
-    } else {
-        hostPort.substringBefore(':')
-    }
-    val octets = host.split('.').mapNotNull { it.toIntOrNull() }
-    return when {
-        host == "127.0.0.1" || host == "::1" -> "This phone"
-        octets.size == 4 && octets[0] == 100 && octets[1] in 64..127 -> "Tailscale"
-        octets.size == 4 && octets[0] == 10 -> "Wi-Fi"
-        octets.size == 4 && octets[0] == 192 && octets[1] == 168 -> "Wi-Fi"
-        octets.size == 4 && octets[0] == 172 && octets[1] in 16..31 -> "Wi-Fi"
-        host.contains(':') -> "IPv6"
-        else -> host
     }
 }
 
