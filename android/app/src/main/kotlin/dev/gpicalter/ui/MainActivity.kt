@@ -34,6 +34,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil3.compose.setSingletonImageLoaderFactory
 import kotlinx.coroutines.launch
 import dev.gpicalter.backup.BackupState
+import dev.gpicalter.core.DeviceRole
 import dev.gpicalter.di.AppContainer
 import dev.gpicalter.ui.screen.LibraryScreen
 import dev.gpicalter.ui.screen.SettingsScreen
@@ -128,7 +129,9 @@ private fun GpicApp() {
         // Opens on whatever this phone leads with, which on the phone holding the photos is the
         // server. Evaluated once, so the tab under your finger never moves mid-session.
         var tab by remember {
-            mutableStateOf(if (container.prefs.isLocalLibrary) Tab.SERVER else Tab.LIBRARY)
+            mutableStateOf(
+                if (container.prefs.role == DeviceRole.HOST) Tab.SERVER else Tab.LIBRARY,
+            )
         }
         var viewerId by remember { mutableStateOf<Long?>(null) }
         var picking by remember { mutableStateOf(false) }
@@ -146,15 +149,18 @@ private fun GpicApp() {
         val backup by BackupState.state.collectAsStateWithLifecycle()
         val server by dev.gpicalter.service.ServerState.state.collectAsStateWithLifecycle()
 
-        /** True when this phone is its own library, rather than pointed at somebody else's. */
-        val hostsLibrary = remember(setupKey) { container.prefs.isLocalLibrary }
+        val role = remember(setupKey) { container.prefs.role }
 
         // Ordered by what the phone is for. On the phone holding the photos the server is the
         // thing you came to check, and burying it third behind a grid you could reach from any
         // device is backwards. Keyed to the role rather than to whether it happens to be running,
         // so stopping the server does not rearrange the bar underneath you.
-        val tabs = remember(hostsLibrary) {
-            if (hostsLibrary) {
+        //
+        // A phone that has not decided leads with the library, the same as a viewer. Leading with
+        // the server would be arranging the app around a job it has not agreed to do, and if the
+        // answer turns out to be "host" the bar reorders the moment that is chosen.
+        val tabs = remember(role) {
+            if (role == DeviceRole.HOST) {
                 listOf(Tab.SERVER, Tab.LIBRARY, Tab.SETTINGS)
             } else {
                 listOf(Tab.LIBRARY, Tab.SERVER, Tab.SETTINGS)
@@ -207,6 +213,11 @@ private fun GpicApp() {
                     SettingsScreen(
                         onEndpointChanged = {
                             libraryVm.refresh()
+                            // Typing an address in, or clearing it, is as much a statement of what
+                            // this phone is as scanning a code or starting the server.
+                            container.prefs.role =
+                                if (container.prefs.serverUrl != null) DeviceRole.VIEWER
+                                else DeviceRole.HOST
                             setupKey++
                         },
                         onPickPhotos = { picking = true },
@@ -223,16 +234,29 @@ private fun GpicApp() {
         // simply that this phone has not been told what it is yet. A phone already paired to a
         // library is excluded: it has answered this question, and an unreachable server there is a
         // different problem with its own diagnosis.
-        if (!showIntro && !setupDismissed && hostsLibrary && !server.running) {
+        // Two reasons to ask: nobody has said what this phone is, or it is the library and nothing
+        // is currently serving it. A viewer is never asked; it answered, and a remote server that
+        // will not answer is a different failure with its own diagnosis.
+        val needsSetup = when (role) {
+            DeviceRole.UNSET -> true
+            DeviceRole.HOST -> !server.running
+            DeviceRole.VIEWER -> false
+        }
+        if (!showIntro && !setupDismissed && needsSetup) {
             SetupScreen(
                 prefs = container.prefs,
                 server = server,
+                firstTime = role == DeviceRole.UNSET,
                 onScanPairingCode = { scanningQr = true },
                 onOpenSettings = {
                     setupDismissed = true
                     tab = Tab.SETTINGS
                 },
                 onServing = {
+                    // Starting the server is the decision, so it is recorded here rather than
+                    // inferred later from the absence of a remote address.
+                    container.prefs.role = DeviceRole.HOST
+                    setupKey++
                     setupDismissed = true
                     tab = Tab.SERVER
                 },
@@ -273,6 +297,7 @@ private fun GpicApp() {
                     libraryVm.refresh()
                     // This phone now points at someone else's library, so it is no longer waiting
                     // to be told what it is, and the bar reorders to put that library first.
+                    container.prefs.role = DeviceRole.VIEWER
                     setupKey++
                     tab = Tab.LIBRARY
                     // Explicit confirmation: the previous version simply closed the camera, which

@@ -6,6 +6,15 @@ import android.util.Base64
 import java.security.SecureRandom
 
 /**
+ * What this phone has been told it is.
+ *
+ * [UNSET] is a real answer and not a placeholder for [HOST]. "No server address configured" is true
+ * both of a phone that holds the library and of one that has never been opened, and treating those
+ * as the same thing means a brand new phone gets arranged around a server it has not agreed to run.
+ */
+enum class DeviceRole { UNSET, HOST, VIEWER }
+
+/**
  * The little shared settings the UI and the foreground service both need. The service starts in
  * its own process lifecycle -- possibly from BOOT_COMPLETED with no Activity ever created -- so it
  * cannot ask a ViewModel which backend to use. It reads it from here.
@@ -122,6 +131,32 @@ class Prefs(context: Context) {
             e.apply()
         }
 
+    /**
+     * Whether this phone holds the library, browses someone else's, or has not said yet.
+     *
+     * Kept as its own preference rather than inferred from [serverUrl], because the absence of a
+     * server address means two different things and only one of them is "this phone is the
+     * library".
+     *
+     * Installs made before this existed have no stored value, so one is worked out from what they
+     * already did: a phone with a server address configured was browsing, and a phone that has been
+     * through onboarding without one was hosting. Only a phone that has neither is genuinely
+     * undecided, which is exactly a fresh install. The inference is not written back, so the first
+     * explicit choice replaces it permanently.
+     */
+    var role: DeviceRole
+        get() {
+            p.getString(KEY_ROLE, null)?.let { stored ->
+                return runCatching { DeviceRole.valueOf(stored) }.getOrDefault(DeviceRole.UNSET)
+            }
+            return when {
+                serverUrl != null -> DeviceRole.VIEWER
+                onboarded -> DeviceRole.HOST
+                else -> DeviceRole.UNSET
+            }
+        }
+        set(v) = p.edit().putString(KEY_ROLE, v.name).apply()
+
     /** Whether the first-launch introduction and permission request has been shown. */
     var onboarded: Boolean
         get() = p.getBoolean(KEY_ONBOARDED, false)
@@ -196,6 +231,7 @@ class Prefs(context: Context) {
         const val KEY_BUCKETS = "backupBuckets"
         const val KEY_MANUAL_IDS = "pendingManualIds"
         const val KEY_ONBOARDED = "onboarded"
+        const val KEY_ROLE = "deviceRole"
         const val KEY_REMOTE_ACCESS = "remoteAccess"
     }
 }

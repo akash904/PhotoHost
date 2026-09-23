@@ -60,6 +60,8 @@ import kotlinx.coroutines.withContext
 fun SetupScreen(
     prefs: Prefs,
     server: ServerState.Snapshot,
+    /** True when nobody has answered this yet, as opposed to a library whose server is simply down. */
+    firstTime: Boolean,
     onScanPairingCode: () -> Unit,
     onOpenSettings: () -> Unit,
     onServing: () -> Unit,
@@ -110,7 +112,11 @@ fun SetupScreen(
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                "Nothing is serving your library yet. You can change this later in Settings.",
+                if (firstTime) {
+                    "Nothing has been set up on this phone yet. You can change this later in Settings."
+                } else {
+                    "This phone holds the library, but nothing is serving it right now."
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
