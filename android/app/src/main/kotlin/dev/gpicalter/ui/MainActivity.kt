@@ -40,6 +40,7 @@ import dev.gpicalter.ui.screen.SettingsScreen
 import dev.gpicalter.ui.screen.DevicePickerScreen
 import dev.gpicalter.ui.screen.PairQrScreen
 import dev.gpicalter.ui.screen.ScanQrScreen
+import dev.gpicalter.ui.screen.SetupScreen
 import dev.gpicalter.ui.screen.TrashScreen
 import dev.gpicalter.ui.screen.ViewerScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -128,6 +129,12 @@ private fun GpicApp() {
         var picking by remember { mutableStateOf(false) }
         var showingQr by remember { mutableStateOf(false) }
         var scanningQr by remember { mutableStateOf(false) }
+
+        // Preferences are plain SharedPreferences and do not emit, so anything that changes the
+        // answer to "is this phone its own library" bumps this to force the question again.
+        var setupKey by remember { mutableIntStateOf(0) }
+        // Session-only: dismissing is a "leave me alone for now", not a decision worth persisting.
+        var setupDismissed by remember { mutableStateOf(false) }
         val libraryVm: LibraryViewModel = viewModel()
         val library by libraryVm.state.collectAsStateWithLifecycle()
         val backup by BackupState.state.collectAsStateWithLifecycle()
@@ -176,13 +183,35 @@ private fun GpicApp() {
                 }
                 else -> androidx.compose.foundation.layout.Box(Modifier.padding(padding)) {
                     SettingsScreen(
-                        onEndpointChanged = { libraryVm.refresh() },
+                        onEndpointChanged = {
+                            libraryVm.refresh()
+                            setupKey++
+                        },
                         onPickPhotos = { picking = true },
                         onShowPairingCode = { showingQr = true },
                         onScanPairingCode = { scanningQr = true },
                     )
                 }
             }
+        }
+
+        // Nothing to browse and nothing serving it. Asked before the grid rather than after it
+        // fails, because an empty grid with a connection error is a symptom, and the cause is
+        // simply that this phone has not been told what it is yet. A phone already paired to a
+        // library is excluded: it has answered this question, and an unreachable server there is a
+        // different problem with its own diagnosis.
+        val unconfigured = remember(setupKey) { container.prefs.isLocalLibrary }
+        if (!showIntro && !setupDismissed && unconfigured && !server.running) {
+            SetupScreen(
+                prefs = container.prefs,
+                server = server,
+                onScanPairingCode = { scanningQr = true },
+                onOpenSettings = {
+                    setupDismissed = true
+                    tab = 2
+                },
+                onDismiss = { setupDismissed = true },
+            )
         }
 
         // Drawn over the scaffold rather than as a route, so the grid keeps its scroll position and
@@ -208,6 +237,9 @@ private fun GpicApp() {
                     container.invalidateHttp()
                     libraryVm.api.invalidateEndpoint()
                     libraryVm.refresh()
+                    // This phone now points at someone else's library, so it is no longer waiting
+                    // to be told what it is.
+                    setupKey++
                     tab = 0
                     // Explicit confirmation: the previous version simply closed the camera, which
                     // is indistinguishable from the scan having failed.
