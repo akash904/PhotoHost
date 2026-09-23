@@ -2,11 +2,13 @@
 <resources>
     <!--
       The accent, lifted from GpicDarkColors in MainActivity. The launcher foreground references
-      this rather than repeating the literal, so the icon and the UI it opens cannot drift apart
+      these rather than repeating the literals, so the icon and the UI it opens cannot drift apart
       the next time one of them is adjusted.
 
-      The dark ground is deliberately not here: the background layer is a three-stop gradient, not
+      The dark ground is deliberately not here: the background layer is a three stop gradient, not
       a flat fill, so there is no single value for this file to own.
     -->
     <color name="photohost_accent">#7CC7FF</color>
+    <!-- The card behind, held back so the two read as two rather than merging into one block. -->
+    <color name="photohost_accent_dim">#5AA6E0</color>
 </resources>

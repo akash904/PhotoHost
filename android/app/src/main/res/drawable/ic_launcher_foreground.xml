@@ -1,14 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Adaptive-icon foreground: a roof over a lit aperture.
+  Adaptive icon foreground: a photo, with another behind it, being broadcast.
 
-  The whole mark sits inside the 72dp safe zone (x 22..86, y 20..86 of a 108 viewport), because a
-  circular mask keeps only the middle 66dp and anything drawn wider gets sliced off on exactly the
-  launchers most people use.
+  Two cards rather than one, because the app serves a library and not a picture. The card behind is
+  an outline while the card in front is solid, which is what keeps them legible as two objects once
+  the icon is flattened to a single tint for a themed icon, where a lighter shade would simply
+  disappear.
 
-  A six-bladed iris rather than a plain ring, so the shape reads as a camera and not as a generic
-  target, with the opening lit from within. Roof over aperture is the whole idea of the app in one
-  mark: photographs, hosted at home, lit up and reachable from far away.
+  The horizon and sun are knocked out of the front card with fillType="evenOdd" rather than painted
+  over it in the background colour. Painted shapes vanish the moment the launcher re tints the
+  silhouette; real holes survive, because a hole is a hole in any colour.
+
+  Everything lives inside a circle of radius 33 around the centre, not merely inside the 72dp safe
+  square. A circular mask keeps only that circle, so a mark that fills the safe square corner to
+  corner gets its corners sliced off on most launchers.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
@@ -17,44 +22,32 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Roof. Brighter at the apex so it catches the light rising off the aperture below. -->
-    <path android:pathData="M54,20 L86,50 L77,50 L54,28 L31,50 L22,50 Z">
+    <!-- Broadcast. Three arcs on one centre, heavy enough to hold at launcher size. -->
+    <path
+        android:pathData="M48.8,40 A6,6 0 0 1 59.2,40 M43.6,37 A12,12 0 0 1 64.4,37 M38.4,34 A18,18 0 0 1 69.6,34"
+        android:fillColor="#00000000"
+        android:strokeColor="@color/photohost_accent"
+        android:strokeWidth="4"
+        android:strokeLineCap="round" />
+
+    <!-- The library behind the picture. -->
+    <path
+        android:pathData="M47,45 L73,45 A4,4 0 0 1 77,49 L77,65 A4,4 0 0 1 73,69 L47,69 A4,4 0 0 1 43,65 L43,49 A4,4 0 0 1 47,45 Z"
+        android:fillColor="#00000000"
+        android:strokeColor="@color/photohost_accent_dim"
+        android:strokeWidth="3.5" />
+
+    <!-- Front card, with the horizon and sun cut out of it. -->
+    <path
+        android:fillType="evenOdd"
+        android:pathData="M37,53 L63,53 A4,4 0 0 1 67,57 L67,73 A4,4 0 0 1 63,77 L37,77 A4,4 0 0 1 33,73 L33,57 A4,4 0 0 1 37,53 Z M35,75 L45,61 L53,69 L59,64 L65,75 Z M61,56.2 A2.8,2.8 0 0 1 61,61.8 A2.8,2.8 0 0 1 61,56.2 Z">
         <aapt:attr name="android:fillColor">
             <gradient
                 android:type="linear"
-                android:startX="54" android:startY="20"
-                android:endX="54" android:endY="50">
+                android:startX="33" android:startY="53"
+                android:endX="67" android:endY="77">
                 <item android:offset="0.0" android:color="#FFB6E2FF" />
                 <item android:offset="1.0" android:color="#FF6FBEF8" />
-            </gradient>
-        </aapt:attr>
-    </path>
-
-    <!-- Aperture barrel. -->
-    <path
-        android:pathData="M38,70 A16,16 0 0 1 70,70 A16,16 0 0 1 38,70 Z"
-        android:fillColor="#00000000"
-        android:strokeColor="@color/photohost_accent"
-        android:strokeWidth="5"
-        android:strokeLineCap="round" />
-
-    <!-- Six blades. Thin on purpose: they carry the "camera" reading at full size and dissolve
-         gracefully into the ring at launcher size rather than turning into mud. -->
-    <path
-        android:pathData="M54,63.5 L54,56.5 M48.37,66.75 L42.31,63.25 M48.37,73.25 L42.31,76.75 M54,76.5 L54,83.5 M59.63,73.25 L65.69,76.75 M59.63,66.75 L65.69,63.25"
-        android:strokeColor="@color/photohost_accent"
-        android:strokeWidth="2.5"
-        android:strokeLineCap="round" />
-
-    <!-- The opening, lit. -->
-    <path android:pathData="M54,63.5 L59.63,66.75 L59.63,73.25 L54,76.5 L48.37,73.25 L48.37,66.75 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:type="radial"
-                android:centerX="54" android:centerY="70"
-                android:gradientRadius="8">
-                <item android:offset="0.0" android:color="#FFF2F9FF" />
-                <item android:offset="1.0" android:color="#FF8FD1FF" />
             </gradient>
         </aapt:attr>
     </path>

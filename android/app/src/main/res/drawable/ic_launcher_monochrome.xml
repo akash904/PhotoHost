@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Themed-icon layer (Android 13+), where the launcher throws away these colours and re-tints the
-  shape to match the wallpaper. So this is the same mark drawn as a flat silhouette: no gradients,
-  which would be discarded anyway, and heavier strokes, because a tinted icon is often rendered
-  low-contrast against its own background and hairlines simply disappear there.
+  Themed icon layer (Android 13+), where the launcher discards these colours and re tints the whole
+  shape to the wallpaper.
+
+  Same geometry as the foreground, with two differences that only matter once everything is one
+  colour: the strokes are heavier, because a tinted icon is often drawn low contrast against its own
+  background and hairlines disappear there, and the horizon and sun stay real evenOdd holes rather
+  than painted shapes, since a painted shape in the same tint as its surroundings is invisible.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -13,23 +16,20 @@
     android:tint="#FF000000">
 
     <path
-        android:pathData="M54,20 L86,50 L77,50 L54,28 L31,50 L22,50 Z"
-        android:fillColor="#FF000000" />
-
-    <path
-        android:pathData="M38,70 A16,16 0 0 1 70,70 A16,16 0 0 1 38,70 Z"
+        android:pathData="M48.8,40 A6,6 0 0 1 59.2,40 M43.6,37 A12,12 0 0 1 64.4,37 M38.4,34 A18,18 0 0 1 69.6,34"
         android:fillColor="#00000000"
         android:strokeColor="#FF000000"
-        android:strokeWidth="5.5"
+        android:strokeWidth="4.5"
         android:strokeLineCap="round" />
 
     <path
-        android:pathData="M54,63.5 L54,56.5 M48.37,66.75 L42.31,63.25 M48.37,73.25 L42.31,76.75 M54,76.5 L54,83.5 M59.63,73.25 L65.69,76.75 M59.63,66.75 L65.69,63.25"
+        android:pathData="M47,45 L73,45 A4,4 0 0 1 77,49 L77,65 A4,4 0 0 1 73,69 L47,69 A4,4 0 0 1 43,65 L43,49 A4,4 0 0 1 47,45 Z"
+        android:fillColor="#00000000"
         android:strokeColor="#FF000000"
-        android:strokeWidth="3"
-        android:strokeLineCap="round" />
+        android:strokeWidth="4" />
 
     <path
-        android:pathData="M54,63.5 L59.63,66.75 L59.63,73.25 L54,76.5 L48.37,73.25 L48.37,66.75 Z"
-        android:fillColor="#FF000000" />
+        android:fillType="evenOdd"
+        android:fillColor="#FF000000"
+        android:pathData="M37,53 L63,53 A4,4 0 0 1 67,57 L67,73 A4,4 0 0 1 63,77 L37,77 A4,4 0 0 1 33,73 L33,57 A4,4 0 0 1 37,53 Z M35,75 L45,61 L53,69 L59,64 L65,75 Z M61,56.2 A2.8,2.8 0 0 1 61,61.8 A2.8,2.8 0 0 1 61,56.2 Z" />
 </vector>
