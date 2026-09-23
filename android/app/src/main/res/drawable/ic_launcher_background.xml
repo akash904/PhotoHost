@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Adaptive-icon background.
+  Adaptive icon background: near white, with a barely there lift towards the middle.
 
-  A radial lift rather than a flat fill: the launcher crops this layer to whatever mask the device
-  uses and shifts it under parallax, and a flat charcoal square reads as a dead rectangle when it
-  moves. The light is centred just below the middle so it sits behind the aperture, which is what
-  makes the foreground look lit rather than merely drawn on top.
+  Light rather than the app's charcoal. On a launcher the icon sits among dozens of others, most of
+  them bright, and a dark tile reads as a system utility rather than as somewhere photographs live.
+  The lift is very slight, just enough that the layer is not a flat rectangle when the launcher
+  shifts it under parallax.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
@@ -19,11 +19,11 @@
             <gradient
                 android:type="radial"
                 android:centerX="54"
-                android:centerY="64"
-                android:gradientRadius="78">
-                <item android:offset="0.0" android:color="#FF1D2836" />
-                <item android:offset="0.5" android:color="#FF151A22" />
-                <item android:offset="1.0" android:color="#FF0C0D10" />
+                android:centerY="50"
+                android:gradientRadius="76">
+                <item android:offset="0.0" android:color="#FFFFFFFF" />
+                <item android:offset="0.65" android:color="#FFFBFCFE" />
+                <item android:offset="1.0" android:color="#FFEDF1F6" />
             </gradient>
         </aapt:attr>
     </path>

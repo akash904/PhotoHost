@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Themed icon layer (Android 13+), where the launcher discards these colours and re tints the whole
-  shape to the wallpaper.
+  Themed icon layer (Android 13+), where the launcher discards every colour and re-tints the shape
+  to the wallpaper.
 
-  Same geometry as the foreground, with two differences that only matter once everything is one
-  colour: the strokes are heavier, because a tinted icon is often drawn low contrast against its own
-  background and hairlines disappear there, and the horizon and sun stay real evenOdd holes rather
-  than painted shapes, since a painted shape in the same tint as its surroundings is invisible.
+  Colour is what separates the three prints in the real icon, and colour is exactly what this layer
+  loses. So the two behind become outlines and only the front one stays solid, which keeps the fan
+  readable as three objects in a single tint. The sun and hills are cut out with fillType evenOdd
+  rather than painted, because a painted shape in the same tint as its surroundings is invisible
+  while a hole stays a hole.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -15,21 +16,24 @@
     android:viewportHeight="108"
     android:tint="#FF000000">
 
-    <path
-        android:pathData="M48.8,40 A6,6 0 0 1 59.2,40 M43.6,37 A12,12 0 0 1 64.4,37 M38.4,34 A18,18 0 0 1 69.6,34"
-        android:fillColor="#00000000"
-        android:strokeColor="#FF000000"
-        android:strokeWidth="4.5"
-        android:strokeLineCap="round" />
+    <group android:pivotX="54" android:pivotY="58" android:rotation="-15">
+        <path
+            android:pathData="M41,36 L67,36 A7,7 0 0 1 74,43 L74,69 A7,7 0 0 1 67,76 L41,76 A7,7 0 0 1 34,69 L34,43 A7,7 0 0 1 41,36 Z"
+            android:fillColor="#00000000"
+            android:strokeColor="#FF000000"
+            android:strokeWidth="4" />
+    </group>
 
-    <path
-        android:pathData="M47,45 L73,45 A4,4 0 0 1 77,49 L77,65 A4,4 0 0 1 73,69 L47,69 A4,4 0 0 1 43,65 L43,49 A4,4 0 0 1 47,45 Z"
-        android:fillColor="#00000000"
-        android:strokeColor="#FF000000"
-        android:strokeWidth="4" />
+    <group android:pivotX="54" android:pivotY="58" android:rotation="15">
+        <path
+            android:pathData="M41,36 L67,36 A7,7 0 0 1 74,43 L74,69 A7,7 0 0 1 67,76 L41,76 A7,7 0 0 1 34,69 L34,43 A7,7 0 0 1 41,36 Z"
+            android:fillColor="#00000000"
+            android:strokeColor="#FF000000"
+            android:strokeWidth="4" />
+    </group>
 
     <path
         android:fillType="evenOdd"
         android:fillColor="#FF000000"
-        android:pathData="M37,53 L63,53 A4,4 0 0 1 67,57 L67,73 A4,4 0 0 1 63,77 L37,77 A4,4 0 0 1 33,73 L33,57 A4,4 0 0 1 37,53 Z M35,75 L45,61 L53,69 L59,64 L65,75 Z M61,56.2 A2.8,2.8 0 0 1 61,61.8 A2.8,2.8 0 0 1 61,56.2 Z" />
+        android:pathData="M41,36 L67,36 A7,7 0 0 1 74,43 L74,69 A7,7 0 0 1 67,76 L41,76 A7,7 0 0 1 34,69 L34,43 A7,7 0 0 1 41,36 Z M62,42 A5,5 0 0 1 62,52 A5,5 0 0 1 62,42 Z M37,72 L46,59 L54,68 L60,62 L71,72 Z" />
 </vector>

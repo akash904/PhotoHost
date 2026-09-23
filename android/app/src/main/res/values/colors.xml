@@ -1,14 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!--
-      The accent, lifted from GpicDarkColors in MainActivity. The launcher foreground references
-      these rather than repeating the literals, so the icon and the UI it opens cannot drift apart
-      the next time one of them is adjusted.
+      The icon palette is deliberately its own thing, and no longer borrowed from GpicDarkColors.
 
-      The dark ground is deliberately not here: the background layer is a three stop gradient, not
-      a flat fill, so there is no single value for this file to own.
+      The app chrome is dark because you look at photographs against dark; a launcher icon is
+      looked at for a quarter of a second among forty others and has to be warm and legible there
+      instead. Matching the two made the icon read as a utility rather than as somewhere your
+      pictures live, which is the opposite of what it is for.
     -->
-    <color name="photohost_accent">#7CC7FF</color>
-    <!-- The card behind, held back so the two read as two rather than merging into one block. -->
-    <color name="photohost_accent_dim">#5AA6E0</color>
+    <color name="print_marigold">#FFB648</color>
+    <color name="print_coral">#FF7F6B</color>
+    <color name="print_edge">#FFFFFF</color>
+    <color name="photo_sun">#FFD470</color>
+    <color name="photo_hills">#38BC85</color>
 </resources>
