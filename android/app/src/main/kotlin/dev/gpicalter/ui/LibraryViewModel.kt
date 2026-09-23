@@ -3,6 +3,7 @@ package dev.gpicalter.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import dev.gpicalter.core.DeviceRole
 import dev.gpicalter.di.AppContainer
 import dev.gpicalter.net.BucketDto
 import dev.gpicalter.net.TimelineItemDto
@@ -31,6 +32,14 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         val knownAddresses: List<String> = emptyList(),
         /** Empty means normal browsing; non-empty puts the grid in selection mode. */
         val selected: Set<Long> = emptySet(),
+        /**
+         * False until this phone has been told whether it keeps the library or browses one.
+         *
+         * Distinct from [reachable], which answers "the server did not respond". Before anybody has
+         * chosen, there is no server to respond, and saying the network is at fault would be
+         * describing a problem that does not exist.
+         */
+        val configured: Boolean = true,
     )
 
     // Mutated only through MutableStateFlow.update, never by read-then-assign. Several coroutines
@@ -43,6 +52,9 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     private var cursor: String? = null
     private var hasMore = true
     private val seen = HashSet<Long>()
+
+    /** Whether anybody has said what this phone is. See [State.configured]. */
+    private fun configured() = container.prefs.role != DeviceRole.UNSET
 
     init {
         refresh()
@@ -96,10 +108,27 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun refresh() {
+        // A phone nobody has configured has no library to load. Probing anyway resolves to loopback,
+        // is refused because no server was ever started, and the grid then renders that as a network
+        // fault -- so the first thing a brand new install shows is troubleshooting steps for a
+        // problem it does not have.
+        if (!configured()) {
+            _state.update {
+                it.copy(
+                    configured = false,
+                    items = emptyList(),
+                    loading = false,
+                    reachable = true,
+                    error = null,
+                )
+            }
+            return
+        }
+
         cursor = null
         hasMore = true
         seen.clear()
-        _state.update { it.copy(items = emptyList(), loading = true) }
+        _state.update { it.copy(configured = true, items = emptyList(), loading = true) }
         viewModelScope.launch {
             // Re-probe on every refresh: the phone may have moved between Wi-Fi and mobile data
             // since the last one, which changes which address is reachable.

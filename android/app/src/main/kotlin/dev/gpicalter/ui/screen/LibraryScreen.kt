@@ -159,6 +159,24 @@ fun LibraryScreen(
             }
 
             when {
+                // Checked before unreachability, because "nobody has set this up" is a different
+                // thing from "the server did not answer" and only one of them is the user's network.
+                state.items.isEmpty() && !state.configured -> Centered {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(horizontal = 28.dp),
+                    ) {
+                        Text("Not set up yet", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "This phone has not been told whether it keeps your photos or views " +
+                                "another phone's library. Choose in Settings.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
+                }
                 state.items.isEmpty() && !state.reachable -> Unreachable(
                     endpoint = state.endpoint,
                     error = state.error,
