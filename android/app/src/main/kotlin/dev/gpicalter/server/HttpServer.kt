@@ -137,10 +137,16 @@ class HttpServer(
                  * the LAN address at home, a Tailscale address away from it. The client pairs once
                  * via QR and then learns the full set from here, so it can pick whichever works
                  * instead of being pinned to the one that happened to be encoded in the code.
+                 *
+                 * The same filtered list the pairing code uses, not every address the server binds.
+                 * Handing back the global IPv6 address here put it straight back into the client's
+                 * candidate list after it had been left out of the code, which is most of the way
+                 * to not having removed it: every failover sweep then spends a timeout probing an
+                 * address whose prefix has very likely moved since it was learned.
                  */
                 get("/api/v1/endpoints") {
                     if (call.denied()) return@get
-                    val found = NetInterfaces.endpoints()
+                    val found = NetInterfaces.displayEndpoints()
                     val plain = found.map { EndpointDto(it.label, it.url(port), secure = false) }
                     val secure = if (tls == null) {
                         emptyList()

@@ -220,12 +220,14 @@ private fun GpicApp() {
                 Tab.SETTINGS -> androidx.compose.foundation.layout.Box(Modifier.padding(padding)) {
                     SettingsScreen(
                         onEndpointChanged = {
-                            libraryVm.refresh()
                             // Typing an address in, or clearing it, is as much a statement of what
-                            // this phone is as scanning a code or starting the server.
+                            // this phone is as scanning a code or starting the server. Recorded
+                            // before the refresh for the same reason as the pairing path above:
+                            // refresh() reads the role and gives up while it is unset.
                             container.prefs.role =
                                 if (container.prefs.serverUrl != null) DeviceRole.VIEWER
                                 else DeviceRole.HOST
+                            libraryVm.refresh()
                             setupKey++
                         },
                         onPickPhotos = { picking = true },
@@ -308,10 +310,15 @@ private fun GpicApp() {
                     // request goes out, or the old trust settings would reject the new server.
                     container.invalidateHttp()
                     libraryVm.api.invalidateEndpoint()
-                    libraryVm.refresh()
                     // This phone now points at someone else's library, so it is no longer waiting
                     // to be told what it is, and the bar reorders to put that library first.
+                    //
+                    // Recorded BEFORE the refresh, and the order is load-bearing: refresh() reads
+                    // the role and does nothing at all while it is still unset, so refreshing first
+                    // left a freshly paired phone showing "not set up yet" over a library it had
+                    // just successfully connected to.
                     container.prefs.role = DeviceRole.VIEWER
+                    libraryVm.refresh()
                     setupKey++
                     setupRequested = false
                     tab = Tab.LIBRARY

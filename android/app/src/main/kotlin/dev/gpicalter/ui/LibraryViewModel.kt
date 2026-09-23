@@ -53,8 +53,17 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     private var hasMore = true
     private val seen = HashSet<Long>()
 
-    /** Whether anybody has said what this phone is. See [State.configured]. */
-    private fun configured() = container.prefs.role != DeviceRole.UNSET
+    /**
+     * Whether anybody has said what this phone is. See [State.configured].
+     *
+     * A configured server address counts on its own, independently of the recorded role. The role
+     * and the address are written by the same handful of callers but not always in the same order,
+     * and getting that order wrong once already produced a phone sitting on "not set up yet" over a
+     * library it had just paired with. A phone that knows where its library is has answered the
+     * question, whatever the bookkeeping says.
+     */
+    private fun configured() =
+        container.prefs.role != DeviceRole.UNSET || container.prefs.serverUrl != null
 
     init {
         refresh()
