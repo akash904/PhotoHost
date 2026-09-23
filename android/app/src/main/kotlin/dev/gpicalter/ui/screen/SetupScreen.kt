@@ -1,8 +1,5 @@
 package dev.gpicalter.ui.screen
 
-import android.content.Intent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,6 +37,7 @@ import dev.gpicalter.service.ServerState
 import dev.gpicalter.storage.StorageReadiness
 import dev.gpicalter.storage.StoreKind
 import dev.gpicalter.storage.storageReadiness
+import dev.gpicalter.ui.components.rememberDrivePicker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -96,17 +94,7 @@ fun SetupScreen(
         if (server.error != null) starting = false
     }
 
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) {
-            // Without the persistable grant the permission dies with the process, so the drive
-            // would need re-picking after every reboot.
-            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            runCatching { context.contentResolver.takePersistableUriPermission(uri, flags) }
-            prefs.treeUri = uri
-            prefs.backend = StoreKind.SAF.name
-            probeKey++
-        }
-    }
+    val picker = rememberDrivePicker(prefs) { probeKey++ }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(

@@ -58,6 +58,7 @@ import dev.gpicalter.ui.components.SectionHeader
 import dev.gpicalter.ui.components.SettingsCard
 import dev.gpicalter.ui.components.SettingsRow
 import dev.gpicalter.ui.components.StatusDot
+import dev.gpicalter.ui.components.StorageCard
 import dev.gpicalter.ui.components.SwitchRow
 import kotlinx.coroutines.launch
 
@@ -467,6 +468,12 @@ fun SettingsScreen(
             "Port ${server.port} is plain HTTP and carries the token in the clear, so it belongs on " +
                 "your own Wi-Fi only. Remote access uses the encrypted port instead.",
         )
+
+        // ---------------------------------------------------------------- storage
+        // Sits with the server because it is what the server serves from, and because both are
+        // only meaningful on the phone that holds the library.
+        SectionHeader("Where photos are kept")
+        StorageCard(prefs = prefs, serverRunning = server.running)
 
         // ---------------------------------------------------------------- remote access
         SectionHeader("Remote access")

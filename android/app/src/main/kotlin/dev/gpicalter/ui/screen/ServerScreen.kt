@@ -28,8 +28,10 @@ import dev.gpicalter.core.Prefs
 import dev.gpicalter.service.MediaServerService
 import dev.gpicalter.service.ServerState
 import dev.gpicalter.ui.components.CardHeader
+import dev.gpicalter.ui.components.SectionHeader
 import dev.gpicalter.ui.components.SettingsCard
 import dev.gpicalter.ui.components.StatusDot
+import dev.gpicalter.ui.components.StorageCard
 
 /**
  * What this phone is serving, and the code another phone scans to reach it.
@@ -138,6 +140,11 @@ fun ServerScreen(prefs: Prefs, server: ServerState.Snapshot, modifier: Modifier 
                     )
                 }
             }
+
+            // Below the code rather than above it. While the server is up the code is why you came;
+            // while it is down there is no code and this is the thing to settle before starting.
+            SectionHeader("Where photos are kept", Modifier.fillMaxWidth())
+            StorageCard(prefs = prefs, serverRunning = server.running)
         }
     }
 }
