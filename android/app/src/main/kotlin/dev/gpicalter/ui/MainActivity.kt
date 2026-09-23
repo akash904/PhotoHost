@@ -125,7 +125,11 @@ private fun GpicApp() {
     }
 
     MaterialTheme(colorScheme = GpicDarkColors) {
-        var tab by remember { mutableIntStateOf(0) }
+        // Opens on whatever this phone leads with, which on the phone holding the photos is the
+        // server. Evaluated once, so the tab under your finger never moves mid-session.
+        var tab by remember {
+            mutableStateOf(if (container.prefs.isLocalLibrary) Tab.SERVER else Tab.LIBRARY)
+        }
         var viewerId by remember { mutableStateOf<Long?>(null) }
         var picking by remember { mutableStateOf(false) }
         var showingQr by remember { mutableStateOf(false) }
@@ -141,6 +145,21 @@ private fun GpicApp() {
         val library by libraryVm.state.collectAsStateWithLifecycle()
         val backup by BackupState.state.collectAsStateWithLifecycle()
         val server by dev.gpicalter.service.ServerState.state.collectAsStateWithLifecycle()
+
+        /** True when this phone is its own library, rather than pointed at somebody else's. */
+        val hostsLibrary = remember(setupKey) { container.prefs.isLocalLibrary }
+
+        // Ordered by what the phone is for. On the phone holding the photos the server is the
+        // thing you came to check, and burying it third behind a grid you could reach from any
+        // device is backwards. Keyed to the role rather than to whether it happens to be running,
+        // so stopping the server does not rearrange the bar underneath you.
+        val tabs = remember(hostsLibrary) {
+            if (hostsLibrary) {
+                listOf(Tab.SERVER, Tab.LIBRARY, Tab.SETTINGS)
+            } else {
+                listOf(Tab.LIBRARY, Tab.SERVER, Tab.SETTINGS)
+            }
+        }
 
         // A backup that just finished has changed the library; showing a stale grid afterwards
         // makes a working upload look like a failed one.
@@ -166,35 +185,25 @@ private fun GpicApp() {
                 // undo something, not a third of what the app is for, and it was taking the slot
                 // the server needed on the one phone where the server matters most.
                 NavigationBar {
-                    NavigationBarItem(
-                        selected = tab == 0,
-                        onClick = { tab = 0 },
-                        icon = { Text("▦") },
-                        label = { Text("Library") },
-                    )
-                    NavigationBarItem(
-                        selected = tab == 1,
-                        onClick = { tab = 1 },
-                        icon = { Text("◉") },
-                        label = { Text("Server") },
-                    )
-                    NavigationBarItem(
-                        selected = tab == 2,
-                        onClick = { tab = 2 },
-                        icon = { Text("⚙") },
-                        label = { Text("Settings") },
-                    )
+                    tabs.forEach { entry ->
+                        NavigationBarItem(
+                            selected = tab == entry,
+                            onClick = { tab = entry },
+                            icon = { Text(entry.glyph()) },
+                            label = { Text(entry.label()) },
+                        )
+                    }
                 }
             },
         ) { padding ->
             when (tab) {
-                0 -> androidx.compose.foundation.layout.Box(Modifier.padding(padding)) {
+                Tab.LIBRARY -> androidx.compose.foundation.layout.Box(Modifier.padding(padding)) {
                     LibraryScreen(onOpen = { viewerId = it }, vm = libraryVm)
                 }
-                1 -> androidx.compose.foundation.layout.Box(Modifier.padding(padding)) {
+                Tab.SERVER -> androidx.compose.foundation.layout.Box(Modifier.padding(padding)) {
                     ServerScreen(prefs = container.prefs, server = server)
                 }
-                else -> androidx.compose.foundation.layout.Box(Modifier.padding(padding)) {
+                Tab.SETTINGS -> androidx.compose.foundation.layout.Box(Modifier.padding(padding)) {
                     SettingsScreen(
                         onEndpointChanged = {
                             libraryVm.refresh()
@@ -214,19 +223,18 @@ private fun GpicApp() {
         // simply that this phone has not been told what it is yet. A phone already paired to a
         // library is excluded: it has answered this question, and an unreachable server there is a
         // different problem with its own diagnosis.
-        val unconfigured = remember(setupKey) { container.prefs.isLocalLibrary }
-        if (!showIntro && !setupDismissed && unconfigured && !server.running) {
+        if (!showIntro && !setupDismissed && hostsLibrary && !server.running) {
             SetupScreen(
                 prefs = container.prefs,
                 server = server,
                 onScanPairingCode = { scanningQr = true },
                 onOpenSettings = {
                     setupDismissed = true
-                    tab = 2
+                    tab = Tab.SETTINGS
                 },
                 onServing = {
                     setupDismissed = true
-                    tab = 1
+                    tab = Tab.SERVER
                 },
                 onDismiss = { setupDismissed = true },
             )
@@ -264,9 +272,9 @@ private fun GpicApp() {
                     libraryVm.api.invalidateEndpoint()
                     libraryVm.refresh()
                     // This phone now points at someone else's library, so it is no longer waiting
-                    // to be told what it is.
+                    // to be told what it is, and the bar reorders to put that library first.
                     setupKey++
-                    tab = 0
+                    tab = Tab.LIBRARY
                     // Explicit confirmation: the previous version simply closed the camera, which
                     // is indistinguishable from the scan having failed.
                     scope.launch { snackbar.showSnackbar("Connected to $paired") }
@@ -294,6 +302,27 @@ private fun GpicApp() {
             )
         }
     }
+}
+
+/**
+ * The three things this phone does, as an enum rather than an index.
+ *
+ * The bottom bar is ordered differently depending on what this phone is, so a tab's position and
+ * its identity are no longer the same thing. Indices would silently mean a different screen on the
+ * serving phone than on the viewing one.
+ */
+private enum class Tab { LIBRARY, SERVER, SETTINGS }
+
+private fun Tab.label() = when (this) {
+    Tab.LIBRARY -> "Library"
+    Tab.SERVER -> "Server"
+    Tab.SETTINGS -> "Settings"
+}
+
+private fun Tab.glyph() = when (this) {
+    Tab.LIBRARY -> "▦"
+    Tab.SERVER -> "◉"
+    Tab.SETTINGS -> "⚙"
 }
 
 /** Dark by default: a photo grid reads better against near-black than against white. */
