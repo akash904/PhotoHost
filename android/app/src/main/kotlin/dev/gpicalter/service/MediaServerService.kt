@@ -434,9 +434,9 @@ class MediaServerService : Service() {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         return Notification.Builder(this, CHANNEL)
-            .setContentTitle("Hearth")
+            .setContentTitle("PhotoHost")
             .setContentText(text)
-            .setSmallIcon(dev.gpicalter.R.drawable.ic_stat_hearth)
+            .setSmallIcon(dev.gpicalter.R.drawable.ic_stat_photohost)
             .setOngoing(true)
             .setContentIntent(open)
             .addAction(Notification.Action.Builder(null, "Stop", stop).build())

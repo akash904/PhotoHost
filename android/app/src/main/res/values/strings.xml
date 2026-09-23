@@ -6,5 +6,5 @@
       would orphan the photo library, the index and the certificate every paired client pins.
       Nobody ever sees an applicationId; they see this.
     -->
-    <string name="app_name">Hearth</string>
+    <string name="app_name">PhotoHost</string>
 </resources>

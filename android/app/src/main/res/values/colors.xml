@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Taken from GpicDarkColors in MainActivity, so the icon and the app it opens are the
-         same two colours rather than merely similar ones. -->
-    <color name="ic_launcher_background">#101114</color>
-    <color name="hearth_flame">#7CC7FF</color>
+    <!--
+      The accent, lifted from GpicDarkColors in MainActivity. The launcher foreground references
+      this rather than repeating the literal, so the icon and the UI it opens cannot drift apart
+      the next time one of them is adjusted.
+
+      The dark ground is deliberately not here: the background layer is a three-stop gradient, not
+      a flat fill, so there is no single value for this file to own.
+    -->
+    <color name="photohost_accent">#7CC7FF</color>
 </resources>

@@ -6,9 +6,9 @@
   circular mask keeps only the middle 66dp and anything drawn wider gets sliced off on exactly the
   launchers most people use.
 
-  The aperture doubles as the fire in the hearth: a six-bladed iris, so it reads as a camera and
-  not as a generic ring, with the blade opening lit from within. That is the whole idea of the app
-  in one shape, the library burning at home, visible from far away.
+  A six-bladed iris rather than a plain ring, so the shape reads as a camera and not as a generic
+  target, with the opening lit from within. Roof over aperture is the whole idea of the app in one
+  mark: photographs, hosted at home, lit up and reachable from far away.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
@@ -34,7 +34,7 @@
     <path
         android:pathData="M38,70 A16,16 0 0 1 70,70 A16,16 0 0 1 38,70 Z"
         android:fillColor="#00000000"
-        android:strokeColor="#FF7CC7FF"
+        android:strokeColor="@color/photohost_accent"
         android:strokeWidth="5"
         android:strokeLineCap="round" />
 
@@ -42,7 +42,7 @@
          gracefully into the ring at launcher size rather than turning into mud. -->
     <path
         android:pathData="M54,63.5 L54,56.5 M48.37,66.75 L42.31,63.25 M48.37,73.25 L42.31,76.75 M54,76.5 L54,83.5 M59.63,73.25 L65.69,76.75 M59.63,66.75 L65.69,63.25"
-        android:strokeColor="#FF7CC7FF"
+        android:strokeColor="@color/photohost_accent"
         android:strokeWidth="2.5"
         android:strokeLineCap="round" />
 
