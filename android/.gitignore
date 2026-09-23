@@ -14,6 +14,13 @@
 # Machine-specific: points at wherever the Android SDK happens to live.
 local.properties
 
+# The Play upload key and its password. Never committed: anything that can sign a build as this
+# app belongs on one machine and in a backup, not in history where removing it later does not
+# actually remove it.
+*.jks
+*.keystore
+keystore.properties
+
 # IDE
 *.iml
 .idea/
