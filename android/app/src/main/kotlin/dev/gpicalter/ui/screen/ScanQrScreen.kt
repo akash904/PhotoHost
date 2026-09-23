@@ -174,8 +174,16 @@ fun ScanQrScreen(prefs: Prefs, onPaired: (String) -> Unit, onClose: () -> Unit) 
                                     analysis,
                                 )
                             } catch (t: Throwable) {
+                                // The exception class belongs in the log, not on screen. "Camera
+                                // unavailable: NullPointerException" was shown for a stripped ML Kit
+                                // registrar, and read as a refused permission -- it sent the reader
+                                // to re-grant a permission that was already granted, which is the
+                                // one thing that could not help. What a person can act on is that
+                                // the camera did not open, and that there is another way in.
                                 Log.e(TAG, "camera bind failed", t)
-                                status = "Camera unavailable: ${t.javaClass.simpleName}"
+                                status = "The camera could not be opened. Close any other app " +
+                                    "using it and try again, or type the server address by hand " +
+                                    "in Settings."
                             }
                         }, executor)
                         previewView
