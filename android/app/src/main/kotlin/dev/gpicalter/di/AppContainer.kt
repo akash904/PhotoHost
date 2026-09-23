@@ -28,7 +28,11 @@ class AppContainer private constructor(context: Context) {
 
     private val app = context.applicationContext
 
-    val prefs = Prefs(app)
+    val prefs = Prefs(app).apply {
+        // Before anything else touches preferences, and in particular before the first-run dialog
+        // sets `onboarded`, which this reads to tell an existing install apart from a new one.
+        migrateRoleIfUnrecorded()
+    }
     val dispatchers = AppDispatchers()
     val db = AppDatabase.get(app)
 

@@ -145,17 +145,32 @@ class Prefs(context: Context) {
      * explicit choice replaces it permanently.
      */
     var role: DeviceRole
-        get() {
-            p.getString(KEY_ROLE, null)?.let { stored ->
-                return runCatching { DeviceRole.valueOf(stored) }.getOrDefault(DeviceRole.UNSET)
-            }
-            return when {
-                serverUrl != null -> DeviceRole.VIEWER
-                onboarded -> DeviceRole.HOST
-                else -> DeviceRole.UNSET
-            }
-        }
+        get() = p.getString(KEY_ROLE, null)
+            ?.let { runCatching { DeviceRole.valueOf(it) }.getOrDefault(DeviceRole.UNSET) }
+            ?: DeviceRole.UNSET
         set(v) = p.edit().putString(KEY_ROLE, v.name).apply()
+
+    /**
+     * Works out a role for installs made before [role] existed, once, and writes it down.
+     *
+     * Deliberately not a fallback inside the getter. The inputs it reads keep changing while the
+     * app runs, and one of them changes almost immediately: the first-run dialog sets [onboarded]
+     * before anybody has chosen anything, so a getter that re-derives would turn a brand new phone
+     * into a host the moment that dialog was dismissed. Evaluating once, at container construction
+     * and therefore before any of that, is what makes the answer mean what it says.
+     *
+     * A phone with a server address configured was browsing. A phone that had already been through
+     * onboarding at this point, without one, was hosting. A phone with neither has genuinely not
+     * decided, which is exactly a fresh install.
+     */
+    fun migrateRoleIfUnrecorded() {
+        if (p.contains(KEY_ROLE)) return
+        role = when {
+            serverUrl != null -> DeviceRole.VIEWER
+            onboarded -> DeviceRole.HOST
+            else -> DeviceRole.UNSET
+        }
+    }
 
     /** Whether the first-launch introduction and permission request has been shown. */
     var onboarded: Boolean
