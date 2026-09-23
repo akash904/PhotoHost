@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Status bar icon. Android draws these as a flat white silhouette on a 24dp canvas and throws every
-  colour away, so the fan cannot survive here: three overlapping squares at 24dp is a smudge. One
-  print, one sun, one line of hills, cut out with fillType evenOdd so the picture reads as a
-  picture rather than as a filled square.
+  Status bar icon, drawn flat white on a 24dp canvas with every colour discarded.
+
+  Six separate blades cannot survive here: the gaps that divide them would be under a pixel. So the
+  blades merge into the one thing they collectively are, a lens with a hexagonal opening, cut out
+  with fillType evenOdd so the opening is a real hole and reads at this size.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
@@ -15,5 +16,5 @@
     <path
         android:fillType="evenOdd"
         android:fillColor="#FFFFFFFF"
-        android:pathData="M5.5,3.5 L18.5,3.5 A2,2 0 0 1 20.5,5.5 L20.5,18.5 A2,2 0 0 1 18.5,20.5 L5.5,20.5 A2,2 0 0 1 3.5,18.5 L3.5,5.5 A2,2 0 0 1 5.5,3.5 Z M15.4,6.6 A2.1,2.1 0 0 1 15.4,10.8 A2.1,2.1 0 0 1 15.4,6.6 Z M5.8,18.2 L10.2,11.8 L13.5,16 L15.7,13.6 L18.2,18.2 Z" />
+        android:pathData="M12,3 A9,9 0 0 1 12,21 A9,9 0 0 1 12,3 Z M12,7.96 L15.5,10 L15.5,14 L12,16.04 L8.5,14 L8.5,10 Z" />
 </vector>

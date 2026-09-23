@@ -1,75 +1,84 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Adaptive icon foreground: three photo prints fanned out, the front one a picture.
+  Adaptive icon foreground: a camera aperture, one colour per blade.
 
-  Aimed at somebody who has never heard of this app and will look at it for about a quarter of a
-  second. A spread of prints is the one image of "photographs" that needs no explaining, and it has
-  nothing in it about servers, networks or storage, which is what made the previous mark read as
-  infrastructure.
+  Colour first, on white, because that is what the icon has to be. It stays a lens rather than pure
+  decoration, so it still says "pictures" to somebody who has never opened the app, but nothing in
+  it describes how the app works.
 
-  Each print carries a white edge, the way a real print does. That border is what keeps three
-  overlapping squares legible as three, so it is structural rather than decorative.
+  One blade is drawn once and rotated six times about the centre. All six are identical, so the
+  shape is defined in a single place and the arithmetic cannot drift between them.
 
-  Everything stays inside a circle of radius 33 around the centre. The prints rotate about
-  (54,58), and rotation cannot move a point further from its own pivot, so the furthest corner
-  stays put at roughly 30 from the centre whatever the angle.
+  Each blade spans 52 degrees at 60 degree spacing, leaving an 8 degree gap. The white stroke sits
+  in that gap: the separation between blades is a real drawn thing, not an absence, which is what
+  makes six shapes still read as six once the icon is 48dp wide.
+
+  Everything sits within radius 29 of the centre, inside the 66dp circle a round mask keeps. The
+  blades meet a hexagonal opening in the middle, which is where the white background shows through.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Back print, tilted left. -->
-    <group android:pivotX="54" android:pivotY="58" android:rotation="-15">
+    <group android:pivotX="54" android:pivotY="54" android:rotation="0">
         <path
-            android:pathData="M41,36 L67,36 A7,7 0 0 1 74,43 L74,69 A7,7 0 0 1 67,76 L41,76 A7,7 0 0 1 34,69 L34,43 A7,7 0 0 1 41,36 Z"
-            android:fillColor="@color/print_marigold"
-            android:strokeColor="@color/print_edge"
-            android:strokeWidth="3" />
+            android:pathData="M64,49.5 L80.07,41.29 A29,29 0 0 1 80.07,66.71 L64,58.5 Z"
+            android:fillColor="@color/blade_orange"
+            android:strokeColor="@color/blade_gap"
+            android:strokeWidth="2.5"
+            android:strokeLineJoin="round"
+            android:strokeLineCap="round" />
     </group>
 
-    <!-- Middle print, tilted right. -->
-    <group android:pivotX="54" android:pivotY="58" android:rotation="15">
+    <group android:pivotX="54" android:pivotY="54" android:rotation="60">
         <path
-            android:pathData="M41,36 L67,36 A7,7 0 0 1 74,43 L74,69 A7,7 0 0 1 67,76 L41,76 A7,7 0 0 1 34,69 L34,43 A7,7 0 0 1 41,36 Z"
-            android:fillColor="@color/print_coral"
-            android:strokeColor="@color/print_edge"
-            android:strokeWidth="3" />
+            android:pathData="M64,49.5 L80.07,41.29 A29,29 0 0 1 80.07,66.71 L64,58.5 Z"
+            android:fillColor="@color/blade_yellow"
+            android:strokeColor="@color/blade_gap"
+            android:strokeWidth="2.5"
+            android:strokeLineJoin="round"
+            android:strokeLineCap="round" />
     </group>
 
-    <!-- Front print: sky, sun, hills. Clipped to the print, so the hills run to the edges and the
-         rounded corners still hold. -->
-    <group>
-        <clip-path
-            android:pathData="M41,36 L67,36 A7,7 0 0 1 74,43 L74,69 A7,7 0 0 1 67,76 L41,76 A7,7 0 0 1 34,69 L34,43 A7,7 0 0 1 41,36 Z" />
-
-        <path android:pathData="M34,36 h40 v40 h-40 z">
-            <aapt:attr name="android:fillColor">
-                <gradient
-                    android:type="linear"
-                    android:startX="54" android:startY="36"
-                    android:endX="54" android:endY="76">
-                    <item android:offset="0.0" android:color="#FF74CDF2" />
-                    <item android:offset="1.0" android:color="#FFCDEDFB" />
-                </gradient>
-            </aapt:attr>
-        </path>
-
+    <group android:pivotX="54" android:pivotY="54" android:rotation="120">
         <path
-            android:pathData="M62,41.5 A5.5,5.5 0 0 1 62,52.5 A5.5,5.5 0 0 1 62,41.5 Z"
-            android:fillColor="@color/photo_sun" />
-
-        <path
-            android:pathData="M34,76 L34,64 L45,53 L54,63 L61,57 L74,70 L74,76 Z"
-            android:fillColor="@color/photo_hills" />
+            android:pathData="M64,49.5 L80.07,41.29 A29,29 0 0 1 80.07,66.71 L64,58.5 Z"
+            android:fillColor="@color/blade_green"
+            android:strokeColor="@color/blade_gap"
+            android:strokeWidth="2.5"
+            android:strokeLineJoin="round"
+            android:strokeLineCap="round" />
     </group>
 
-    <!-- Drawn last so the front print keeps a clean white edge over its own contents. -->
-    <path
-        android:pathData="M41,36 L67,36 A7,7 0 0 1 74,43 L74,69 A7,7 0 0 1 67,76 L41,76 A7,7 0 0 1 34,69 L34,43 A7,7 0 0 1 41,36 Z"
-        android:fillColor="#00000000"
-        android:strokeColor="@color/print_edge"
-        android:strokeWidth="3" />
+    <group android:pivotX="54" android:pivotY="54" android:rotation="180">
+        <path
+            android:pathData="M64,49.5 L80.07,41.29 A29,29 0 0 1 80.07,66.71 L64,58.5 Z"
+            android:fillColor="@color/blade_blue"
+            android:strokeColor="@color/blade_gap"
+            android:strokeWidth="2.5"
+            android:strokeLineJoin="round"
+            android:strokeLineCap="round" />
+    </group>
+
+    <group android:pivotX="54" android:pivotY="54" android:rotation="240">
+        <path
+            android:pathData="M64,49.5 L80.07,41.29 A29,29 0 0 1 80.07,66.71 L64,58.5 Z"
+            android:fillColor="@color/blade_violet"
+            android:strokeColor="@color/blade_gap"
+            android:strokeWidth="2.5"
+            android:strokeLineJoin="round"
+            android:strokeLineCap="round" />
+    </group>
+
+    <group android:pivotX="54" android:pivotY="54" android:rotation="300">
+        <path
+            android:pathData="M64,49.5 L80.07,41.29 A29,29 0 0 1 80.07,66.71 L64,58.5 Z"
+            android:fillColor="@color/blade_coral"
+            android:strokeColor="@color/blade_gap"
+            android:strokeWidth="2.5"
+            android:strokeLineJoin="round"
+            android:strokeLineCap="round" />
+    </group>
 </vector>

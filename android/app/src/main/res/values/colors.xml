@@ -1,16 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!--
-      The icon palette is deliberately its own thing, and no longer borrowed from GpicDarkColors.
+      Six blades, six colours, going round the wheel so no two neighbours are close in hue. That is
+      the whole reason there are six and not four: adjacent blades have to separate by hue alone at
+      launcher size, where the white gaps between them are barely a pixel wide.
 
-      The app chrome is dark because you look at photographs against dark; a launcher icon is
-      looked at for a quarter of a second among forty others and has to be warm and legible there
-      instead. Matching the two made the icon read as a utility rather than as somewhere your
-      pictures live, which is the opposite of what it is for.
+      Deliberately not the app's own palette. The chrome is dark because you look at photographs
+      against dark; an icon is looked at for a quarter of a second among forty brighter ones.
     -->
-    <color name="print_marigold">#FFB648</color>
-    <color name="print_coral">#FF7F6B</color>
-    <color name="print_edge">#FFFFFF</color>
-    <color name="photo_sun">#FFD470</color>
-    <color name="photo_hills">#38BC85</color>
+    <color name="blade_orange">#FF9F1C</color>
+    <color name="blade_yellow">#FFD23F</color>
+    <color name="blade_green">#3FBF87</color>
+    <color name="blade_blue">#2EA9E0</color>
+    <color name="blade_violet">#8E6BE0</color>
+    <color name="blade_coral">#FF5E5B</color>
+    <!-- The gap between blades, which is what keeps six shapes reading as six. -->
+    <color name="blade_gap">#FFFFFF</color>
 </resources>
