@@ -77,6 +77,7 @@ fun SettingsScreen(
     onPickPhotos: () -> Unit = {},
     onShowPairingCode: () -> Unit = {},
     onScanPairingCode: () -> Unit = {},
+    onOpenTrash: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -308,6 +309,15 @@ fun SettingsScreen(
                 subtitle = "Point the camera at the QR shown on the phone serving the library",
                 value = "›",
                 onClick = onScanPairingCode,
+            )
+            RowDivider()
+            // Was a tab of its own. Deleting something is rare and undoing it rarer still, which
+            // does not earn a third of the bottom bar on every screen.
+            SettingsRow(
+                title = "Trash",
+                subtitle = "Restore deleted photos, or remove them for good",
+                value = "›",
+                onClick = onOpenTrash,
             )
             RowDivider()
             CardHeader {

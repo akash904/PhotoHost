@@ -40,6 +40,7 @@ import dev.gpicalter.ui.screen.SettingsScreen
 import dev.gpicalter.ui.screen.DevicePickerScreen
 import dev.gpicalter.ui.screen.PairQrScreen
 import dev.gpicalter.ui.screen.ScanQrScreen
+import dev.gpicalter.ui.screen.ServerScreen
 import dev.gpicalter.ui.screen.SetupScreen
 import dev.gpicalter.ui.screen.TrashScreen
 import dev.gpicalter.ui.screen.ViewerScreen
@@ -135,6 +136,7 @@ private fun GpicApp() {
         var setupKey by remember { mutableIntStateOf(0) }
         // Session-only: dismissing is a "leave me alone for now", not a decision worth persisting.
         var setupDismissed by remember { mutableStateOf(false) }
+        var trashOpen by remember { mutableStateOf(false) }
         val libraryVm: LibraryViewModel = viewModel()
         val library by libraryVm.state.collectAsStateWithLifecycle()
         val backup by BackupState.state.collectAsStateWithLifecycle()
@@ -146,12 +148,23 @@ private fun GpicApp() {
             if (backup.finishedAt > 0L) libraryVm.refresh()
         }
 
+        // The grid's failure state is sticky: it was drawn when nothing was listening, and nothing
+        // retries on its own. Without this, starting the server leaves the library still insisting
+        // it cannot be reached, which is the one moment the message is certainly wrong.
+        LaunchedEffect(server.running) {
+            if (server.running) libraryVm.refresh()
+        }
+
         val snackbar = remember { SnackbarHostState() }
         val scope = rememberCoroutineScope()
 
         Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
+                // Three tabs, one per thing this phone does: look at photos, serve them, configure
+                // it. Trash moved into Settings because it is somewhere you go occasionally to
+                // undo something, not a third of what the app is for, and it was taking the slot
+                // the server needed on the one phone where the server matters most.
                 NavigationBar {
                     NavigationBarItem(
                         selected = tab == 0,
@@ -162,8 +175,8 @@ private fun GpicApp() {
                     NavigationBarItem(
                         selected = tab == 1,
                         onClick = { tab = 1 },
-                        icon = { Text("🗑") },
-                        label = { Text("Trash") },
+                        icon = { Text("◉") },
+                        label = { Text("Server") },
                     )
                     NavigationBarItem(
                         selected = tab == 2,
@@ -179,7 +192,7 @@ private fun GpicApp() {
                     LibraryScreen(onOpen = { viewerId = it }, vm = libraryVm)
                 }
                 1 -> androidx.compose.foundation.layout.Box(Modifier.padding(padding)) {
-                    TrashScreen(api = libraryVm.api, onChanged = { libraryVm.refresh() })
+                    ServerScreen(prefs = container.prefs, server = server)
                 }
                 else -> androidx.compose.foundation.layout.Box(Modifier.padding(padding)) {
                     SettingsScreen(
@@ -190,6 +203,7 @@ private fun GpicApp() {
                         onPickPhotos = { picking = true },
                         onShowPairingCode = { showingQr = true },
                         onScanPairingCode = { scanningQr = true },
+                        onOpenTrash = { trashOpen = true },
                     )
                 }
             }
@@ -210,7 +224,19 @@ private fun GpicApp() {
                     setupDismissed = true
                     tab = 2
                 },
+                onServing = {
+                    setupDismissed = true
+                    tab = 1
+                },
                 onDismiss = { setupDismissed = true },
+            )
+        }
+
+        if (trashOpen) {
+            TrashScreen(
+                api = libraryVm.api,
+                onChanged = { libraryVm.refresh() },
+                onClose = { trashOpen = false },
             )
         }
 

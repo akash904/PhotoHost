@@ -39,13 +39,132 @@ import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 import dev.gpicalter.ui.components.Footnote
 
 /**
- * Shows the pairing QR on the phone that hosts the library.
+ * Builds the pairing link the QR encodes.
  *
- * The code encodes the ordinary pairing URL, `http://<host>:<port>/pair?c=<token>`, rather than a
+ * The code carries the ordinary pairing URL, `http://<host>:<port>/pair?c=<token>`, rather than a
  * private format. That single choice makes one QR serve both clients: this app parses it to
  * configure itself, and any phone camera or browser opens it as a link, which signs that browser
  * in. A bespoke `gpic://` payload would have needed a second QR for browsers.
+ *
+ * Separate from any composable because two screens show this code -- the Server tab inline, and the
+ * full-screen version reached from Settings -- and a payload that differed between them would be a
+ * pairing bug that only appears depending on which screen you happened to use.
  */
+fun pairingPayload(
+    urls: List<String>,
+    token: String,
+    httpsUrl: String?,
+    fingerprint: String?,
+    alternates: List<String>,
+): String? {
+    // Prefer a routable LAN or Tailscale address; loopback is useless to another device.
+    val base = urls.map { it.substringAfter(": ") }
+        .firstOrNull { !it.contains("127.0.0.1") }
+        ?: urls.firstOrNull()?.substringAfter(": ")
+
+    // The TLS address is preferred when available: it is the one that is safe to use from outside
+    // the LAN, and the fingerprint travelling in the same code is what lets the app pin it.
+    val primary = when {
+        httpsUrl != null && fingerprint != null -> "$httpsUrl/pair?c=$token&f=$fingerprint"
+        else -> base?.let { "$it/pair?c=$token" }
+    }
+
+    // Every other address rides along. A code advertises whichever address this phone prefers, and
+    // the phone scanning it may be on a network where that one is unreachable -- over Wi-Fi scanning
+    // a code that names a VPN address, most obviously. Without the rest, that scan produces a client
+    // that paired successfully and can never connect, because discovering more addresses requires a
+    // connection it cannot make.
+    //
+    // The separators are left unescaped: they are legal in a query value, and encoding them would
+    // inflate the code for no gain.
+    val extras = alternates.filterNot { it.contains("127.0.0.1") }.distinct()
+    return when {
+        primary == null -> null
+        extras.isEmpty() -> primary
+        else -> primary + "&a=" + android.net.Uri.encode(extras.joinToString(","), ":/,")
+    }
+}
+
+/**
+ * The code itself, plus what to do with it.
+ *
+ * @param qrSize how large to draw the code. The Server tab shares the screen with a status card and
+ *   uses a smaller one; the full-screen version can afford more.
+ */
+@Composable
+fun PairingCode(payload: String?, modifier: Modifier = Modifier, qrSize: Int = 280) {
+    val clipboard = LocalClipboardManager.current
+    val qr = remember(payload) { payload?.let { encodeQr(it, 640) } }
+
+    if (qr == null || payload == null) {
+        Text(
+            "Start the server first — there is no address to share yet.",
+            modifier.padding(32.dp),
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
+
+    Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        // White quiet zone around the code: scanners need the contrast, and on a dark theme a bare
+        // QR on near-black background fails to read on many cameras.
+        Box(
+            Modifier
+                .padding(24.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(androidx.compose.ui.graphics.Color.White)
+                .padding(16.dp),
+        ) {
+            Image(
+                bitmap = qr.asImageBitmap(),
+                contentDescription = "Pairing QR code",
+                modifier = Modifier.size(qrSize.dp),
+            )
+        }
+
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                "On the other phone: choose \"View photos kept on another phone\"",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                if (payload.startsWith("https")) {
+                    "Encrypted, and safe to use from outside your network. A browser will warn " +
+                        "about the certificate once; the app verifies it properly."
+                } else {
+                    "Or point any camera at it to sign a browser in."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+        }
+
+        Text(
+            text = payload,
+            modifier = Modifier.padding(24.dp),
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        TextButton(onClick = { clipboard.setText(AnnotatedString(payload)) }) { Text("Copy link") }
+
+        Footnote(
+            "Anyone who scans this gets full access to the library. Treat it like a password, " +
+                "and only show it on a network you trust.",
+        )
+    }
+}
+
+/** The full-screen version, reached from Settings. */
 @Composable
 fun PairQrScreen(
     urls: List<String>,
@@ -55,38 +174,10 @@ fun PairQrScreen(
     alternates: List<String> = emptyList(),
     onClose: () -> Unit,
 ) {
-    val clipboard = LocalClipboardManager.current
     BackHandler { onClose() }
-
-    // Prefer a routable LAN or Tailscale address; loopback is useless to another device.
-    val base = remember(urls) {
-        urls.map { it.substringAfter(": ") }
-            .firstOrNull { !it.contains("127.0.0.1") }
-            ?: urls.firstOrNull()?.substringAfter(": ")
+    val payload = remember(urls, token, httpsUrl, fingerprint, alternates) {
+        pairingPayload(urls, token, httpsUrl, fingerprint, alternates)
     }
-    // The TLS address is preferred when available: it is the one that is safe to use from outside
-    // the LAN, and the fingerprint travelling in the same code is what lets the app pin it.
-    val payload = remember(base, httpsUrl, token, fingerprint, alternates) {
-        val primary = when {
-            httpsUrl != null && fingerprint != null -> "$httpsUrl/pair?c=$token&f=$fingerprint"
-            else -> base?.let { "$it/pair?c=$token" }
-        }
-        // Every other address rides along. A code advertises whichever address this phone prefers,
-        // and the phone scanning it may be on a network where that one is unreachable -- over Wi-Fi
-        // scanning a code that names a VPN address, most obviously. Without the rest, that scan
-        // produces a client that paired successfully and can never connect, because discovering more
-        // addresses requires a connection it cannot make.
-        //
-        // The separators are left unescaped: they are legal in a query value, and encoding them
-        // would inflate the code for no gain.
-        val extras = alternates.filterNot { it.contains("127.0.0.1") }.distinct()
-        when {
-            primary == null -> null
-            extras.isEmpty() -> primary
-            else -> primary + "&a=" + android.net.Uri.encode(extras.joinToString(","), ":/,")
-        }
-    }
-    val qr = remember(payload) { payload?.let { encodeQr(it, 640) } }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
@@ -102,71 +193,7 @@ fun PairQrScreen(
                     fontWeight = FontWeight.SemiBold,
                 )
             }
-
-            val link = payload
-            if (qr == null || link == null) {
-                Text(
-                    "Start the server first — there is no address to share yet.",
-                    Modifier.padding(32.dp),
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                return@Column
-            }
-
-            // White quiet zone around the code: scanners need the contrast, and on a dark theme a
-            // bare QR on near-black background fails to read on many cameras.
-            Box(
-                Modifier
-                    .padding(24.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.WHITE.let { androidx.compose.ui.graphics.Color.White })
-                    .padding(16.dp),
-            ) {
-                Image(
-                    bitmap = qr.asImageBitmap(),
-                    contentDescription = "Pairing QR code",
-                    modifier = Modifier.size(280.dp),
-                )
-            }
-
-            Column(
-                Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Text(
-                    "On the other phone: Settings → Scan QR",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                )
-                Text(
-                    if (payload.startsWith("https")) {
-                        "Encrypted, and safe to use from outside your network. A browser will warn " +
-                            "about the certificate once; the app verifies it properly."
-                    } else {
-                        "Or point any camera at it to sign a browser in."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                )
-            }
-
-            Text(
-                text = link,
-                modifier = Modifier.padding(24.dp),
-                style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            TextButton(onClick = { clipboard.setText(AnnotatedString(link)) }) { Text("Copy link") }
-
-            Footnote(
-                "Anyone who scans this gets full access to the library. Treat it like a password, " +
-                    "and only show it on a network you trust.",
-            )
+            PairingCode(payload)
         }
     }
 }

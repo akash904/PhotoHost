@@ -1,5 +1,6 @@
 package dev.gpicalter.ui.screen
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -54,7 +55,8 @@ import kotlinx.coroutines.launch
  * the cached thumbnail both survive until a purge.
  */
 @Composable
-fun TrashScreen(api: LibraryApi, onChanged: () -> Unit) {
+fun TrashScreen(api: LibraryApi, onChanged: () -> Unit, onClose: () -> Unit) {
+    BackHandler { onClose() }
     val scope = rememberCoroutineScopeCompat()
     var items by remember { mutableStateOf<List<TrashItemDto>?>(null) }
     var selected by remember { mutableStateOf(setOf<Long>()) }
@@ -96,7 +98,9 @@ fun TrashScreen(api: LibraryApi, onChanged: () -> Unit) {
 
     val list = items
 
-    Column(Modifier.fillMaxSize()) {
+    // Opaque: this is drawn over the rest of the app now rather than inside the tab scaffold, and
+    // a transparent column would let the photo grid show through behind the thumbnails.
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -104,6 +108,7 @@ fun TrashScreen(api: LibraryApi, onChanged: () -> Unit) {
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            TextButton(onClick = onClose) { Text("Close") }
             Text(
                 text = when {
                     list == null -> "Trash"

@@ -64,6 +64,7 @@ fun SetupScreen(
     server: ServerState.Snapshot,
     onScanPairingCode: () -> Unit,
     onOpenSettings: () -> Unit,
+    onServing: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -87,8 +88,11 @@ fun SetupScreen(
     }
 
     // The server coming up is the answer to the question this screen asks, so it closes itself.
+    // Deliberately a different callback from dismissal: somebody who just chose to host wants to
+    // see what they are now hosting and the code to pair against it, not the photo grid, which at
+    // that moment has nothing in it and a stale connection error from before the server existed.
     LaunchedEffect(server.running, server.error) {
-        if (server.running) onDismiss()
+        if (server.running) onServing()
         if (server.error != null) starting = false
     }
 
