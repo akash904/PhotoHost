@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.gpicalter.backup.BackupScheduler
 import dev.gpicalter.backup.BackupState
+import dev.gpicalter.core.DeviceRole
 import dev.gpicalter.core.Prefs
 import dev.gpicalter.di.AppContainer
 import dev.gpicalter.net.RemoteState
@@ -79,6 +80,7 @@ fun SettingsScreen(
     onShowPairingCode: () -> Unit = {},
     onScanPairingCode: () -> Unit = {},
     onOpenTrash: () -> Unit = {},
+    onSetUp: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
@@ -162,6 +164,24 @@ fun SettingsScreen(
             .verticalScroll(rememberScrollState())
             .padding(bottom = 32.dp),
     ) {
+
+        // ---------------------------------------------------------------- role
+        // A permanent way back to the question. The setup screen dismisses for the session, and
+        // without this a phone that answered "not now" -- or one that simply changed its mind
+        // later -- has no route to the choice at all.
+        SectionHeader("This phone")
+        SettingsCard {
+            SettingsRow(
+                title = "Set up this phone",
+                subtitle = when (prefs.role) {
+                    DeviceRole.HOST -> "Keeps the library here and serves it to other devices"
+                    DeviceRole.VIEWER -> "Views a library kept on another phone"
+                    DeviceRole.UNSET -> "Not chosen yet"
+                },
+                value = "›",
+                onClick = onSetUp,
+            )
+        }
 
         // ---------------------------------------------------------------- backup
         SectionHeader("Back up this phone")

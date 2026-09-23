@@ -143,6 +143,10 @@ private fun GpicApp() {
         var setupKey by remember { mutableIntStateOf(0) }
         // Session-only: dismissing is a "leave me alone for now", not a decision worth persisting.
         var setupDismissed by remember { mutableStateOf(false) }
+        // Asked for deliberately, from the Library empty state or from Settings. Separate from the
+        // automatic gate below, which only fires when setup is *needed* -- so without this, a phone
+        // that has already answered could tap "Set up this phone" and have nothing happen.
+        var setupRequested by remember { mutableStateOf(false) }
         var trashOpen by remember { mutableStateOf(false) }
         val libraryVm: LibraryViewModel = viewModel()
         val library by libraryVm.state.collectAsStateWithLifecycle()
@@ -204,7 +208,11 @@ private fun GpicApp() {
         ) { padding ->
             when (tab) {
                 Tab.LIBRARY -> androidx.compose.foundation.layout.Box(Modifier.padding(padding)) {
-                    LibraryScreen(onOpen = { viewerId = it }, vm = libraryVm)
+                    LibraryScreen(
+                        onOpen = { viewerId = it },
+                        vm = libraryVm,
+                        onSetUp = { setupRequested = true },
+                    )
                 }
                 Tab.SERVER -> androidx.compose.foundation.layout.Box(Modifier.padding(padding)) {
                     ServerScreen(prefs = container.prefs, server = server)
@@ -224,6 +232,7 @@ private fun GpicApp() {
                         onShowPairingCode = { showingQr = true },
                         onScanPairingCode = { scanningQr = true },
                         onOpenTrash = { trashOpen = true },
+                        onSetUp = { setupRequested = true },
                     )
                 }
             }
@@ -242,13 +251,14 @@ private fun GpicApp() {
             DeviceRole.HOST -> !server.running
             DeviceRole.VIEWER -> false
         }
-        if (!showIntro && !setupDismissed && needsSetup) {
+        if (!showIntro && (setupRequested || (!setupDismissed && needsSetup))) {
             SetupScreen(
                 prefs = container.prefs,
                 server = server,
                 firstTime = role == DeviceRole.UNSET,
                 onScanPairingCode = { scanningQr = true },
                 onOpenSettings = {
+                    setupRequested = false
                     setupDismissed = true
                     tab = Tab.SETTINGS
                 },
@@ -257,10 +267,14 @@ private fun GpicApp() {
                     // inferred later from the absence of a remote address.
                     container.prefs.role = DeviceRole.HOST
                     setupKey++
+                    setupRequested = false
                     setupDismissed = true
                     tab = Tab.SERVER
                 },
-                onDismiss = { setupDismissed = true },
+                onDismiss = {
+                    setupRequested = false
+                    setupDismissed = true
+                },
             )
         }
 
@@ -299,6 +313,7 @@ private fun GpicApp() {
                     // to be told what it is, and the bar reorders to put that library first.
                     container.prefs.role = DeviceRole.VIEWER
                     setupKey++
+                    setupRequested = false
                     tab = Tab.LIBRARY
                     // Explicit confirmation: the previous version simply closed the camera, which
                     // is indistinguishable from the scan having failed.

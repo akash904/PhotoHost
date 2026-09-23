@@ -73,6 +73,7 @@ private const val GAP_DP = 2
 fun LibraryScreen(
     onOpen: (Long) -> Unit,
     vm: LibraryViewModel = viewModel(),
+    onSetUp: () -> Unit = {},
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
@@ -169,12 +170,19 @@ fun LibraryScreen(
                         Text("Not set up yet", style = MaterialTheme.typography.titleMedium)
                         Text(
                             "This phone has not been told whether it keeps your photos or views " +
-                                "another phone's library. Choose in Settings.",
+                                "another phone's library.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
                             modifier = Modifier.padding(top = 6.dp),
                         )
+                        // The way out. An empty state that explains the situation and offers no
+                        // action is a dead end, and this one is reached precisely by someone who
+                        // dismissed the screen that would have asked.
+                        Button(
+                            onClick = onSetUp,
+                            modifier = Modifier.padding(top = 16.dp),
+                        ) { Text("Set up this phone") }
                     }
                 }
                 state.items.isEmpty() && !state.reachable -> Unreachable(
