@@ -212,6 +212,7 @@ private fun GpicApp() {
                         onOpen = { viewerId = it },
                         vm = libraryVm,
                         onSetUp = { setupRequested = true },
+                        onOpenBackup = { tab = Tab.SETTINGS },
                     )
                 }
                 Tab.SERVER -> androidx.compose.foundation.layout.Box(Modifier.padding(padding)) {

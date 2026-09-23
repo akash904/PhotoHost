@@ -262,9 +262,20 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { api.batch(ids, if (favorite) "favorite" else "unfavorite") }
     }
 
+    /**
+     * Asks the server to walk its storage again, then reloads.
+     *
+     * The reload is the point. Scanning is a job queued on the server, so the request returns long
+     * before anything is indexed; without waiting and re-fetching, tapping this leaves the grid
+     * exactly as empty as before and reads as a button that does nothing. The delay is a guess at
+     * how long a small library takes, and a second tap covers a larger one.
+     */
     fun rescan() {
         viewModelScope.launch {
+            _state.update { it.copy(loading = true) }
             api.requestScan()
+            delay(2500)
+            refresh()
         }
     }
 }

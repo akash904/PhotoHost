@@ -74,6 +74,7 @@ fun LibraryScreen(
     onOpen: (Long) -> Unit,
     vm: LibraryViewModel = viewModel(),
     onSetUp: () -> Unit = {},
+    onOpenBackup: () -> Unit = {},
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
@@ -193,14 +194,30 @@ fun LibraryScreen(
                     onRetry = vm::refresh,
                 )
                 state.items.isEmpty() && state.loading -> Centered { CircularProgressIndicator() }
+                // Connected, and the library is genuinely empty. Previously this said "tap Scan",
+                // naming a control that existed only in the web UI -- so the one instruction the
+                // screen gave could not be followed on the phone it was printed on.
                 state.items.isEmpty() -> Centered {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(horizontal = 28.dp),
+                    ) {
                         Text("Nothing here yet", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            "Add photos to the library and tap Scan.",
+                            "Photos already on the server appear here once it has looked for " +
+                                "them. Or send this phone's own photos across.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(top = 6.dp),
                         )
+                        Button(
+                            onClick = { vm.rescan() },
+                            modifier = Modifier.padding(top = 16.dp),
+                        ) { Text("Look for photos on the server") }
+                        TextButton(onClick = onOpenBackup) {
+                            Text("Back up this phone's photos")
+                        }
                     }
                 }
                 // The grid is a snapshot of a server that keeps changing underneath it -- a backup
