@@ -76,40 +76,45 @@ object NetInterfaces {
     /**
      * The address to hand a client that is not on this Wi-Fi, or null when there is none.
      *
-     * Tailscale ranks first because it is the only address here that works without the router being
-     * reconfigured -- and on a connection behind carrier NAT it is the only one that works at all.
-     * A global IPv6 address is next, and only reaches anything if the router has been told to allow
-     * inbound traffic to it.
+     * Tailscale, or nothing.
      *
-     * A LAN address is never returned. Handing someone 192.168.x.y as a remote endpoint produces a
-     * connection timeout they will read as "the server is down", which is worse than being told
-     * plainly that there is no remote address yet.
+     * Global IPv6 used to be the fallback here, on the reasoning that it is the only other address
+     * that could reach the library from outside. In practice it reaches nothing and does not stay
+     * put: this ISP re-delegates the prefix roughly daily -- observed moving overnight -- and the
+     * ONT drops inbound traffic to it anyway. Returning it made it the pairing code's primary
+     * address whenever Tailscale was down, so a phone standing on the same Wi-Fi as the server
+     * paired against the least stable address available and then routed over it, while a LAN
+     * address that is equally encrypted and does not move sat unused in the same code.
+     *
+     * Returning null instead lets the caller fall through to the ordinary preference order, which
+     * already puts the LAN first. "No remote address" is the honest answer when Tailscale is off.
+     *
+     * A LAN address is never returned from here. Handing someone 192.168.x.y as a remote endpoint
+     * produces a connection timeout they will read as "the server is down", which is worse than
+     * being told plainly that there is no remote address yet.
      */
-    fun remoteEndpoint(): Endpoint? {
-        val all = endpoints()
-        return all.firstOrNull { it.label == TAILSCALE }
-            ?: all.firstOrNull { it.host.startsWith("[") }
-    }
+    fun remoteEndpoint(): Endpoint? = endpoints().firstOrNull { it.label == TAILSCALE }
 
     /**
      * The endpoints worth listing on screen.
      *
-     * When Tailscale is up it is the way in from outside, and the global IPv6 address becomes noise:
-     * it is long, it changes whenever the ISP re-delegates the prefix, and behind a router that
-     * drops inbound traffic it reaches nothing. Showing it only invites pairing against an address
-     * that cannot work and will not stay put.
+     * Never the global IPv6 address, whether or not Tailscale is up.
      *
-     * Without Tailscale it is kept, because it is then the only candidate for reaching the library
-     * from outside, and hiding the only option is worse than showing a difficult one.
+     * It was previously kept when Tailscale was down, on the grounds that hiding the only way in
+     * from outside is worse than showing a difficult one. That was the wrong trade, because it is
+     * not a way in: the ONT drops inbound traffic to it, and the prefix moves about once a day, so
+     * anything paired against it stops working by morning. Keeping it also cost QR density, on a
+     * code that has to scan off a glowing screen.
      *
-     * [endpoints] stays unfiltered, since the certificate should name every address the server might
-     * be reached at whether or not the address is worth putting in front of a person.
+     * Dropping it loses nothing real. Remote access is Tailscale; at home the LAN address is
+     * shorter, stable, and available over TLS just the same.
+     *
+     * [endpoints] stays unfiltered, so the certificate still names the IPv6 address. It costs
+     * nothing there, and it means typing that address by hand still validates for anyone whose
+     * network does route it.
      */
-    fun displayEndpoints(): List<Endpoint> {
-        val all = endpoints()
-        if (all.none { it.label == TAILSCALE }) return all
-        return all.filterNot { it.label.contains("IPv6") }
-    }
+    fun displayEndpoints(): List<Endpoint> =
+        endpoints().filterNot { it.label.contains("IPv6") }
 
     /** Whether a Tailscale interface is up, which changes what remote access has to do. */
     fun hasTailscale(): Boolean = endpoints().any { it.label == TAILSCALE }
