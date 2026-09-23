@@ -1,20 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Adaptive icon foreground: a camera aperture, one colour per blade.
+  Adaptive icon foreground: three prints overlapping, the overlaps mixing to new colours.
 
-  Colour first, on white, because that is what the icon has to be. It stays a lens rather than pure
-  decoration, so it still says "pictures" to somebody who has never opened the app, but nothing in
-  it describes how the app works.
+  Radial symmetry is what made the previous marks feel stock, so this one has none: three squares in
+  a triangle, seven colour regions, no rotational repeat anywhere.
 
-  One blade is drawn once and rotated six times about the centre. All six are identical, so the
-  shape is defined in a single place and the arithmetic cannot drift between them.
+  ### How the overlaps are drawn
 
-  Each blade spans 52 degrees at 60 degree spacing, leaving an 8 degree gap. The white stroke sits
-  in that gap: the separation between blades is a real drawn thing, not an absence, which is what
-  makes six shapes still read as six once the icon is 48dp wide.
+  Not by stacking translucent fills. Android composites source-over and has no multiply blend, so
+  two 75% fills produce a muted wash dominated by whichever sits on top rather than a mixed hue. So
+  each region is painted as its own named colour, and the region itself is cut out by intersecting
+  clip paths: a group clipped to one print, nested inside a group clipped to another, paints exactly
+  where the two meet, rounded corners and all. Working the intersection outlines out by hand would
+  mean solving where two corner arcs cross, which is arithmetic with no reason to be in a file.
 
-  Everything sits within radius 29 of the centre, inside the 66dp circle a round mask keeps. The
-  blades meet a hexagonal opening in the middle, which is where the white background shows through.
+  Painting order matters. Each pairwise region also covers the centre where all three meet, so the
+  three pairs go down first and the core goes last, over the top of them.
+
+  Everything sits inside radius 33 of the centre, which is the circle a round mask keeps. The two
+  lower prints have their outer bottom corners at 31.2 before rounding, which is the closest
+  anything comes to being clipped.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -22,63 +27,57 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <group android:pivotX="54" android:pivotY="54" android:rotation="0">
-        <path
-            android:pathData="M64,49.5 L80.07,41.29 A29,29 0 0 1 80.07,66.71 L64,58.5 Z"
-            android:fillColor="@color/blade_orange"
-            android:strokeColor="@color/blade_gap"
-            android:strokeWidth="2.5"
-            android:strokeLineJoin="round"
-            android:strokeLineCap="round" />
+    <!-- Top print. -->
+    <path
+        android:pathData="M47,28 L61,28 A7,7 0 0 1 68,35 L68,49 A7,7 0 0 1 61,56 L47,56 A7,7 0 0 1 40,49 L40,35 A7,7 0 0 1 47,28 Z"
+        android:fillColor="@color/bloom_coral" />
+
+    <!-- Lower left print. -->
+    <path
+        android:pathData="M37,46 L51,46 A7,7 0 0 1 58,53 L58,67 A7,7 0 0 1 51,74 L37,74 A7,7 0 0 1 30,67 L30,53 A7,7 0 0 1 37,46 Z"
+        android:fillColor="@color/bloom_blue" />
+
+    <!-- Lower right print. -->
+    <path
+        android:pathData="M57,46 L71,46 A7,7 0 0 1 78,53 L78,67 A7,7 0 0 1 71,74 L57,74 A7,7 0 0 1 50,67 L50,53 A7,7 0 0 1 57,46 Z"
+        android:fillColor="@color/bloom_yellow" />
+
+    <!-- coral meets blue -->
+    <group>
+        <clip-path android:pathData="M47,28 L61,28 A7,7 0 0 1 68,35 L68,49 A7,7 0 0 1 61,56 L47,56 A7,7 0 0 1 40,49 L40,35 A7,7 0 0 1 47,28 Z" />
+        <group>
+            <clip-path android:pathData="M37,46 L51,46 A7,7 0 0 1 58,53 L58,67 A7,7 0 0 1 51,74 L37,74 A7,7 0 0 1 30,67 L30,53 A7,7 0 0 1 37,46 Z" />
+            <path android:pathData="M0,0h108v108h-108z" android:fillColor="@color/bloom_violet" />
+        </group>
     </group>
 
-    <group android:pivotX="54" android:pivotY="54" android:rotation="60">
-        <path
-            android:pathData="M64,49.5 L80.07,41.29 A29,29 0 0 1 80.07,66.71 L64,58.5 Z"
-            android:fillColor="@color/blade_yellow"
-            android:strokeColor="@color/blade_gap"
-            android:strokeWidth="2.5"
-            android:strokeLineJoin="round"
-            android:strokeLineCap="round" />
+    <!-- coral meets yellow -->
+    <group>
+        <clip-path android:pathData="M47,28 L61,28 A7,7 0 0 1 68,35 L68,49 A7,7 0 0 1 61,56 L47,56 A7,7 0 0 1 40,49 L40,35 A7,7 0 0 1 47,28 Z" />
+        <group>
+            <clip-path android:pathData="M57,46 L71,46 A7,7 0 0 1 78,53 L78,67 A7,7 0 0 1 71,74 L57,74 A7,7 0 0 1 50,67 L50,53 A7,7 0 0 1 57,46 Z" />
+            <path android:pathData="M0,0h108v108h-108z" android:fillColor="@color/bloom_orange" />
+        </group>
     </group>
 
-    <group android:pivotX="54" android:pivotY="54" android:rotation="120">
-        <path
-            android:pathData="M64,49.5 L80.07,41.29 A29,29 0 0 1 80.07,66.71 L64,58.5 Z"
-            android:fillColor="@color/blade_green"
-            android:strokeColor="@color/blade_gap"
-            android:strokeWidth="2.5"
-            android:strokeLineJoin="round"
-            android:strokeLineCap="round" />
+    <!-- blue meets yellow -->
+    <group>
+        <clip-path android:pathData="M37,46 L51,46 A7,7 0 0 1 58,53 L58,67 A7,7 0 0 1 51,74 L37,74 A7,7 0 0 1 30,67 L30,53 A7,7 0 0 1 37,46 Z" />
+        <group>
+            <clip-path android:pathData="M57,46 L71,46 A7,7 0 0 1 78,53 L78,67 A7,7 0 0 1 71,74 L57,74 A7,7 0 0 1 50,67 L50,53 A7,7 0 0 1 57,46 Z" />
+            <path android:pathData="M0,0h108v108h-108z" android:fillColor="@color/bloom_green" />
+        </group>
     </group>
 
-    <group android:pivotX="54" android:pivotY="54" android:rotation="180">
-        <path
-            android:pathData="M64,49.5 L80.07,41.29 A29,29 0 0 1 80.07,66.71 L64,58.5 Z"
-            android:fillColor="@color/blade_blue"
-            android:strokeColor="@color/blade_gap"
-            android:strokeWidth="2.5"
-            android:strokeLineJoin="round"
-            android:strokeLineCap="round" />
-    </group>
-
-    <group android:pivotX="54" android:pivotY="54" android:rotation="240">
-        <path
-            android:pathData="M64,49.5 L80.07,41.29 A29,29 0 0 1 80.07,66.71 L64,58.5 Z"
-            android:fillColor="@color/blade_violet"
-            android:strokeColor="@color/blade_gap"
-            android:strokeWidth="2.5"
-            android:strokeLineJoin="round"
-            android:strokeLineCap="round" />
-    </group>
-
-    <group android:pivotX="54" android:pivotY="54" android:rotation="300">
-        <path
-            android:pathData="M64,49.5 L80.07,41.29 A29,29 0 0 1 80.07,66.71 L64,58.5 Z"
-            android:fillColor="@color/blade_coral"
-            android:strokeColor="@color/blade_gap"
-            android:strokeWidth="2.5"
-            android:strokeLineJoin="round"
-            android:strokeLineCap="round" />
+    <!-- all three, painted last so it survives the three pairs above it -->
+    <group>
+        <clip-path android:pathData="M47,28 L61,28 A7,7 0 0 1 68,35 L68,49 A7,7 0 0 1 61,56 L47,56 A7,7 0 0 1 40,49 L40,35 A7,7 0 0 1 47,28 Z" />
+        <group>
+            <clip-path android:pathData="M37,46 L51,46 A7,7 0 0 1 58,53 L58,67 A7,7 0 0 1 51,74 L37,74 A7,7 0 0 1 30,67 L30,53 A7,7 0 0 1 37,46 Z" />
+            <group>
+                <clip-path android:pathData="M57,46 L71,46 A7,7 0 0 1 78,53 L78,67 A7,7 0 0 1 71,74 L57,74 A7,7 0 0 1 50,67 L50,53 A7,7 0 0 1 57,46 Z" />
+                <path android:pathData="M0,0h108v108h-108z" android:fillColor="@color/bloom_core" />
+            </group>
+        </group>
     </group>
 </vector>

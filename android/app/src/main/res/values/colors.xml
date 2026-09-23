@@ -1,19 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!--
-      Six blades, six colours, going round the wheel so no two neighbours are close in hue. That is
-      the whole reason there are six and not four: adjacent blades have to separate by hue alone at
-      launcher size, where the white gaps between them are barely a pixel wide.
+      Three prints overlap, and the six approved hues fall out of that arrangement exactly: coral,
+      blue and yellow are the prints themselves, and violet, orange and green are what each pair
+      mixes to. Nothing here was chosen to fill a slot.
+
+      The overlaps are painted as explicit colours rather than produced by stacking translucent
+      fills. Android composites source-over with no multiply blend, so two 75% fills give a muted
+      wash dominated by whichever is on top, not a mixed hue. Naming the result is the only way to
+      get a violet that is actually violet.
 
       Deliberately not the app's own palette. The chrome is dark because you look at photographs
       against dark; an icon is looked at for a quarter of a second among forty brighter ones.
     -->
-    <color name="blade_orange">#FF9F1C</color>
-    <color name="blade_yellow">#FFD23F</color>
-    <color name="blade_green">#3FBF87</color>
-    <color name="blade_blue">#2EA9E0</color>
-    <color name="blade_violet">#8E6BE0</color>
-    <color name="blade_coral">#FF5E5B</color>
-    <!-- The gap between blades, which is what keeps six shapes reading as six. -->
-    <color name="blade_gap">#FFFFFF</color>
+    <color name="bloom_coral">#FF5E5B</color>
+    <color name="bloom_blue">#2EA9E0</color>
+    <color name="bloom_yellow">#FFD23F</color>
+    <!-- coral over blue -->
+    <color name="bloom_violet">#8E6BE0</color>
+    <!-- coral over yellow -->
+    <color name="bloom_orange">#FF9F1C</color>
+    <!-- blue over yellow -->
+    <color name="bloom_green">#3FBF87</color>
+    <!-- all three, which subtractively is the darkest point and the mark's anchor -->
+    <color name="bloom_core">#443C7A</color>
 </resources>

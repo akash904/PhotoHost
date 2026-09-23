@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Themed icon layer (Android 13+), where the launcher discards every colour and tints the whole
-  shape to the wallpaper.
+  Themed icon layer (Android 13+), flattened to a single wallpaper tint.
 
-  Hue is the only thing separating the six blades in the real icon, and hue is exactly what this
-  layer takes away. A white stroke cannot help here either, since white becomes the same tint as
-  everything else. So the gap has to become geometry: each blade narrows from 52 degrees to 48, and
-  the 12 degree space left between them is real empty canvas that survives any tint.
+  The real mark is seven colour regions, and this layer has exactly one colour, so none of it
+  survives: filled, the three prints would merge into one rounded blob. Outlines are the answer.
+  Three overlapping rectangles drawn as strokes still read as three overlapping rectangles in any
+  tint, because the information is carried by the edges rather than by the fills.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -15,28 +14,21 @@
     android:viewportHeight="108"
     android:tint="#FF000000">
 
-    <group android:pivotX="54" android:pivotY="54" android:rotation="0">
-        <path android:pathData="M64,49.8 L80.49,42.21 A29,29 0 0 1 80.49,65.79 L64,58.2 Z"
-            android:fillColor="#FF000000" />
-    </group>
-    <group android:pivotX="54" android:pivotY="54" android:rotation="60">
-        <path android:pathData="M64,49.8 L80.49,42.21 A29,29 0 0 1 80.49,65.79 L64,58.2 Z"
-            android:fillColor="#FF000000" />
-    </group>
-    <group android:pivotX="54" android:pivotY="54" android:rotation="120">
-        <path android:pathData="M64,49.8 L80.49,42.21 A29,29 0 0 1 80.49,65.79 L64,58.2 Z"
-            android:fillColor="#FF000000" />
-    </group>
-    <group android:pivotX="54" android:pivotY="54" android:rotation="180">
-        <path android:pathData="M64,49.8 L80.49,42.21 A29,29 0 0 1 80.49,65.79 L64,58.2 Z"
-            android:fillColor="#FF000000" />
-    </group>
-    <group android:pivotX="54" android:pivotY="54" android:rotation="240">
-        <path android:pathData="M64,49.8 L80.49,42.21 A29,29 0 0 1 80.49,65.79 L64,58.2 Z"
-            android:fillColor="#FF000000" />
-    </group>
-    <group android:pivotX="54" android:pivotY="54" android:rotation="300">
-        <path android:pathData="M64,49.8 L80.49,42.21 A29,29 0 0 1 80.49,65.79 L64,58.2 Z"
-            android:fillColor="#FF000000" />
-    </group>
+    <path
+        android:pathData="M47,28 L61,28 A7,7 0 0 1 68,35 L68,49 A7,7 0 0 1 61,56 L47,56 A7,7 0 0 1 40,49 L40,35 A7,7 0 0 1 47,28 Z"
+        android:fillColor="#00000000"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="4.5" />
+
+    <path
+        android:pathData="M37,46 L51,46 A7,7 0 0 1 58,53 L58,67 A7,7 0 0 1 51,74 L37,74 A7,7 0 0 1 30,67 L30,53 A7,7 0 0 1 37,46 Z"
+        android:fillColor="#00000000"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="4.5" />
+
+    <path
+        android:pathData="M57,46 L71,46 A7,7 0 0 1 78,53 L78,67 A7,7 0 0 1 71,74 L57,74 A7,7 0 0 1 50,67 L50,53 A7,7 0 0 1 57,46 Z"
+        android:fillColor="#00000000"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="4.5" />
 </vector>
