@@ -29,6 +29,15 @@ object BackupState {
         val skipped: Int = 0,
         val alreadyOnServer: Int = 0,
         val failed: Int = 0,
+        /**
+         * Items whose contents have been read and hashed.
+         *
+         * Separate from [done], which only counts items the server has finished with. Hashing is
+         * the slow half -- every candidate is read in full and digested, up to CHECK_BATCH of them
+         * before a single upload starts -- and while it runs [done] cannot move. Without a counter
+         * of its own the screen sits on "Backing up 0 of 250" for minutes and reads as a hang.
+         */
+        val checked: Int = 0,
         val currentName: String? = null,
         val lastError: String? = null,
         val finishedAt: Long = 0,
@@ -139,9 +148,12 @@ class BackupEngine(
                 val hash = hashOf(item)
                 if (hash == null) {
                     failed++
-                    BackupState.update { it.copy(done = it.done + 1, failed = it.failed + 1) }
+                    BackupState.update {
+                        it.copy(done = it.done + 1, checked = it.checked + 1, failed = it.failed + 1)
+                    }
                     continue
                 }
+                BackupState.update { it.copy(checked = it.checked + 1) }
                 hashed.getOrPut(hash) { ArrayList() }.add(item)
             }
             if (hashed.isEmpty()) continue

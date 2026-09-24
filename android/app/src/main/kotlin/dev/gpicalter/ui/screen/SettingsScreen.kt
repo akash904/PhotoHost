@@ -191,6 +191,12 @@ fun SettingsScreen(
                     StatusDot(active = backupOn || backup.running)
                     Text(
                         text = when {
+                            // Named by the phase actually running. Reading and hashing every
+                            // candidate happens before any upload does, and calling that "backing
+                            // up" while the count stands still is what made it look stuck.
+                            backup.running && backup.checked > backup.done ->
+                                "Checking ${backup.checked} of ${backup.total}"
+
                             backup.running -> "Backing up ${backup.done} of ${backup.total}"
                             !backupOn -> "Off"
                             backup.finishedAt > 0L -> "Up to date"
@@ -203,7 +209,11 @@ fun SettingsScreen(
                 }
                 if (backup.running && backup.total > 0) {
                     LinearProgressIndicator(
-                        progress = { backup.done.toFloat() / backup.total },
+                        // Whichever phase is further along. Both counters only ever grow, so the
+                        // bar cannot go backwards when uploading catches up with hashing.
+                        progress = {
+                            maxOf(backup.done, backup.checked).toFloat() / backup.total
+                        },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
