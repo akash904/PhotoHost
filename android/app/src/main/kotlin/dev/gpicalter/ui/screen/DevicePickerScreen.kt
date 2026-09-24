@@ -41,6 +41,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -137,27 +138,34 @@ fun DevicePickerScreen(
                     text = if (selected.isEmpty()) "Pick photos" else "${selected.size} selected",
                     modifier = Modifier.weight(1f),
                     fontWeight = FontWeight.SemiBold,
+                    // One line, always. This is the element that gives way when the row is tight,
+                    // and a wrapping title makes the whole bar jump taller mid-selection.
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                if (selected.isNotEmpty()) {
+                // The two bulk actions are mutually exclusive by situation rather than both being
+                // shown: "all new" is how a selection starts, "clear" is how it ends. Offering
+                // both at once was what left five controls fighting over one row.
+                if (selected.isEmpty()) {
+                    if (visible.isNotEmpty()) {
+                        TextButton(onClick = {
+                            // "All" means everything not already backed up: re-offering known
+                            // photos is harmless but makes the count meaningless.
+                            selected = visible
+                                .filterNot { it.sourceKey in backedUp }
+                                .map { it.mediaStoreId }
+                                .toSet()
+                        }) { Text("All new") }
+                    }
+                } else {
                     TextButton(onClick = { selected = emptySet() }) { Text("Clear") }
+                    Button(
+                        onClick = {
+                            BackupScheduler.runSelection(context, selected, prefs.backupWifiOnly)
+                            onClose()
+                        },
+                    ) { Text("Back up") }
                 }
-                if (visible.isNotEmpty()) {
-                    TextButton(onClick = {
-                        // "All" means everything not already backed up: re-offering known photos
-                        // is harmless but makes the count meaningless.
-                        selected = visible
-                            .filterNot { it.sourceKey in backedUp }
-                            .map { it.mediaStoreId }
-                            .toSet()
-                    }) { Text("All new") }
-                }
-                Button(
-                    enabled = selected.isNotEmpty(),
-                    onClick = {
-                        BackupScheduler.runSelection(context, selected, prefs.backupWifiOnly)
-                        onClose()
-                    },
-                ) { Text("Back up") }
             }
 
             if (buckets.isNotEmpty()) {
