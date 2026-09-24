@@ -139,6 +139,26 @@ fun LibraryScreen(
         }
     }
 
+    // Shown above a grid that already has photos in it: some tiles are blank because they are not
+    // rendered yet, and saying so is the difference between "wait" and "something is broken".
+    if (state.preparing > 0 && state.items.isNotEmpty()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+            Text(
+                "Preparing ${state.preparing} more photos…",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 10.dp),
+            )
+        }
+    }
+
     if (state.selected.isEmpty() && state.knownAddresses.isNotEmpty()) {
         ConnectionBar(
             active = state.endpoint,
@@ -197,6 +217,28 @@ fun LibraryScreen(
                 // Connected, and the library is genuinely empty. Previously this said "tap Scan",
                 // naming a control that existed only in the web UI -- so the one instruction the
                 // screen gave could not be followed on the phone it was printed on.
+                // Still rendering. Distinct from an empty library, because the tiles look the same
+                // and only one of the two is worth waiting for.
+                state.items.isEmpty() && state.preparing > 0 -> Centered {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(horizontal = 28.dp),
+                    ) {
+                        CircularProgressIndicator()
+                        Text(
+                            "Preparing ${state.preparing} photos…",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(top = 16.dp),
+                        )
+                        Text(
+                            "The server is making thumbnails. They appear as they finish.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
+                }
                 state.items.isEmpty() -> Centered {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,

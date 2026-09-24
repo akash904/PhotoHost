@@ -7,6 +7,8 @@ import dev.gpicalter.core.DeviceRole
 import dev.gpicalter.di.AppContainer
 import dev.gpicalter.net.BucketDto
 import dev.gpicalter.net.TimelineItemDto
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.delay
@@ -40,6 +42,14 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
          * describing a problem that does not exist.
          */
         val configured: Boolean = true,
+        /**
+         * How many photos the server is still rendering thumbnails for.
+         *
+         * Without this a freshly filled library is indistinguishable from a broken one: the tiles
+         * are blank either way, and nothing on screen says whether waiting will help. It cost an
+         * hour of debugging a server that was simply still working.
+         */
+        val preparing: Int = 0,
     )
 
     // Mutated only through MutableStateFlow.update, never by read-then-assign. Several coroutines
@@ -52,6 +62,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     private var cursor: String? = null
     private var hasMore = true
     private val seen = HashSet<Long>()
+    private var preparingWatch: Job? = null
 
     /**
      * Whether anybody has said what this phone is. See [State.configured].
@@ -153,6 +164,36 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             _state.update { it.copy(knownAddresses = knownAddresses()) }
             val buckets = api.buckets()
             _state.update { it.copy(buckets = buckets) }
+            watchPreparing()
+        }
+    }
+
+    /**
+     * Follows thumbnail rendering until it finishes, then reloads once.
+     *
+     * The count comes from stats the server already publishes rather than a new field: assets minus
+     * ready grid thumbnails is exactly what is still missing, gated on there being queued work so a
+     * thumbnail that has failed for good does not leave this counting down forever.
+     *
+     * The reload at the end matters as much as the count. Image requests made while a thumbnail was
+     * still rendering came back as "not ready", and nothing reissues them, so without this the grid
+     * stays blank until the app is next opened -- which is precisely the behaviour that looked like
+     * a bug.
+     */
+    private fun watchPreparing() {
+        preparingWatch?.cancel()
+        preparingWatch = viewModelScope.launch {
+            var sawWork = false
+            while (isActive) {
+                val stats = api.stats() ?: break
+                val missing = (stats.assets - stats.gridThumbs).coerceAtLeast(0)
+                val busy = missing > 0 && stats.pendingJobs > 0
+                _state.update { it.copy(preparing = if (busy) missing else 0) }
+                if (!busy) break
+                sawWork = true
+                delay(3_000)
+            }
+            if (sawWork && isActive) refresh()
         }
     }
 
