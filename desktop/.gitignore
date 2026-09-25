@@ -1,0 +1,18 @@
+# Build output
+/build
+.gradle/
+.kotlin/
+
+# IDE
+*.iml
+.idea/
+*.hprof
+
+# OS
+Thumbs.db
+
+# Deliberately NOT ignored:
+#   gradle/wrapper/gradle-wrapper.jar  -- without it a fresh clone cannot build
+#   schemas/                           -- exported Room schemas. They must stay identical to
+#                                         gpicAlter's app/schemas, which is how parity with the
+#                                         phone's database is checked.
