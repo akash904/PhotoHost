@@ -30,6 +30,14 @@ class Config private constructor(
         set(v) = set(KEY_LIBRARY, v.absolutePath)
 
     /**
+     * Path to ffmpeg.exe for video thumbnails, or "none" to switch them off. Unset means: look next
+     * to the app, then on the PATH.
+     */
+    var ffmpeg: String?
+        get() = props.getProperty(KEY_FFMPEG)?.takeIf { it.isNotBlank() }
+        set(v) = if (v == null) { props.remove(KEY_FFMPEG); save() } else set(KEY_FFMPEG, v)
+
+    /**
      * The access token, generated once and reused so pairing survives restarts. Generated exactly
      * as the phone does it -- 32 random bytes, URL-safe base64 without padding -- so a token from
      * either server looks the same to every client.
@@ -66,6 +74,7 @@ class Config private constructor(
         private const val KEY_PORT = "port"
         private const val KEY_TOKEN = "token"
         private const val KEY_LIBRARY = "library"
+        private const val KEY_FFMPEG = "ffmpeg"
 
         fun defaultDataDir(): File {
             val local = System.getenv("LOCALAPPDATA")?.takeIf { it.isNotBlank() }

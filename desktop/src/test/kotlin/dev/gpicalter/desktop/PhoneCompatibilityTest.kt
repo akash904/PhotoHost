@@ -75,6 +75,9 @@ class PhoneCompatibilityTest {
         config = Config.load(dataDir)
         config.libraryRoot = libraryDir
         config.port = freePortPair()
+        // Pinned off so the no-decoder path stays covered on machines that do have ffmpeg.
+        // VideoThumbnailTest covers the path where it is present.
+        config.ffmpeg = "none"
         server = DesktopServer(config)
         assertTrue(server.start(), "server did not start: ${server.status.value.error}")
 

@@ -13,8 +13,9 @@ import kotlin.math.roundToInt
  * quality, same cache layout -- because HttpServer and ThumbnailCache are shared code that assume
  * it.
  *
- * Videos and HEIC are not rendered yet: the phone uses platform codecs the JVM does not have.
- * [canRender] says so up front, and the thumbnail job parks itself as BLOCKED rather than failing.
+ * Video frames come from ffmpeg ([VideoFrames]); HEIC is not rendered yet. When a decoder is
+ * missing, [canRender] says so up front and the thumbnail job parks itself as BLOCKED rather than
+ * failing, so it runs once the decoder is there.
  *
  * Files are named by content hash, so identical bytes share one thumbnail, a file that moves keeps
  * its thumbnail, and the cache can never go stale relative to its source.
@@ -23,6 +24,12 @@ class ThumbnailGenerator(
     /** Where thumbnails live. On a PC that is the data directory, never the library folder. */
     val root: File,
     private val store: LibraryStore,
+    private val video: VideoFrames = VideoFrames(null),
+    /**
+     * A real filesystem path for a stored file, or null. ffmpeg has to open videos itself: an MP4
+     * with its index at the end cannot be decoded from a pipe, because the decoder must seek.
+     */
+    private val localPath: (String) -> java.nio.file.Path? = { null },
 ) {
     init {
         root.mkdirs()
@@ -30,7 +37,8 @@ class ThumbnailGenerator(
 
     data class Rendered(val relPath: String, val bytes: Long, val width: Int, val height: Int)
 
-    fun canRender(mime: String, isVideo: Boolean): Boolean = !isVideo && ImageDecoding.canDecode(mime)
+    fun canRender(mime: String, isVideo: Boolean): Boolean =
+        if (isVideo) video.available else ImageDecoding.canDecode(mime)
 
     fun cacheFile(contentHash: String, sizeClass: Int): File =
         File(root, relPathFor(contentHash, sizeClass))
@@ -50,7 +58,6 @@ class ThumbnailGenerator(
      * @param isVideo whether to pull a frame instead of decoding an image
      * @param orientation degrees of rotation to bake in, so no client ever has to rotate anything
      */
-    @Suppress("UNUSED_PARAMETER")
     fun render(
         contentHash: String,
         relPath: String,
@@ -59,22 +66,10 @@ class ThumbnailGenerator(
         sizeClass: Int,
         durationMs: Long?,
     ): Rendered {
-        if (isVideo) throw UnsupportedOperationException("video frames need ffmpeg, not shipped yet")
         val target = if (sizeClass == ThumbSize.GRID) GRID_SHORT_EDGE else PREVIEW_LONG_EDGE
         val quality = if (sizeClass == ThumbSize.GRID) 75 else 82
 
-        // Two passes, as on the phone: header for the dimensions, then a subsampled decode. Each
-        // pass gets a fresh stream from position zero, so there is no rewind to forget.
-        val decoded = store.openRead(relPath).use { handle ->
-            val bounds = ImageDecoding.bounds(handle.inputStream())
-                ?: throw IllegalStateException("decoder could not read dimensions")
-            val relevant = if (sizeClass == ThumbSize.GRID) {
-                minOf(bounds.width, bounds.height)
-            } else {
-                maxOf(bounds.width, bounds.height)
-            }
-            ImageDecoding.decodeSampled(handle.inputStream(), ImageDecoding.sampleFor(relevant, target))
-        } ?: throw IllegalStateException("decoder produced no image")
+        val decoded = if (isVideo) videoFrame(relPath, durationMs) else imageFrame(relPath, sizeClass, target)
 
         val oriented = if (orientation != 0) ImageDecoding.rotate(decoded, orientation) else decoded
 
@@ -91,6 +86,26 @@ class ThumbnailGenerator(
         val out = cacheFile(contentHash, sizeClass)
         ImageDecoding.writeJpeg(scaled, out, quality)
         return Rendered(relPathFor(contentHash, sizeClass), out.length(), scaled.width, scaled.height)
+    }
+
+    private fun videoFrame(relPath: String, durationMs: Long?): java.awt.image.BufferedImage {
+        val path = localPath(relPath) ?: throw IllegalStateException("no local path for $relPath")
+        return video.frame(path, durationMs) ?: throw IllegalStateException("ffmpeg produced no frame")
+    }
+
+    private fun imageFrame(relPath: String, sizeClass: Int, target: Int): java.awt.image.BufferedImage {
+        // Two passes, as on the phone: header for the dimensions, then a subsampled decode. Each
+        // pass gets a fresh stream from position zero, so there is no rewind to forget.
+        return store.openRead(relPath).use { handle ->
+            val bounds = ImageDecoding.bounds(handle.inputStream())
+                ?: throw IllegalStateException("decoder could not read dimensions")
+            val relevant = if (sizeClass == ThumbSize.GRID) {
+                minOf(bounds.width, bounds.height)
+            } else {
+                maxOf(bounds.width, bounds.height)
+            }
+            ImageDecoding.decodeSampled(handle.inputStream(), ImageDecoding.sampleFor(relevant, target))
+        } ?: throw IllegalStateException("decoder produced no image")
     }
 
     companion object {

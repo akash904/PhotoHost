@@ -185,6 +185,7 @@ class PairingWindow(
         details.text = buildString {
             s.addresses.forEach { appendLine("Address:   $it") }
             if (s.fingerprint != null) appendLine("TLS pin:   ${s.fingerprint}")
+            if (s.running) appendLine("Video thumbnails: ${s.videoDecoder?.let { "on (ffmpeg at $it)" } ?: "off - ffmpeg not found"}")
             s.scanNote?.let { appendLine("Last scan: $it") }
             s.pairingLink?.let { appendLine(); append(it) }
         }

@@ -17,6 +17,7 @@ import dev.gpicalter.jobs.ThumbnailHandler
 import dev.gpicalter.media.DesktopMediaProbe
 import dev.gpicalter.media.ThumbnailCache
 import dev.gpicalter.media.ThumbnailGenerator
+import dev.gpicalter.media.VideoFrames
 import dev.gpicalter.server.Auth
 import dev.gpicalter.server.CertStore
 import dev.gpicalter.server.HttpServer
@@ -58,6 +59,8 @@ data class ServerStatus(
     val pendingJobs: Int = 0,
     val blockedJobs: Int = 0,
     val scanNote: String? = null,
+    /** The ffmpeg in use for video thumbnails, or null when there is none. */
+    val videoDecoder: String? = null,
 )
 
 /**
@@ -106,7 +109,9 @@ class DesktopServer(private val config: Config) {
         val token = config.token()
 
         val probe = DesktopMediaProbe()
-        val generator = ThumbnailGenerator(File(libDir, "thumbs"), store)
+        val video = VideoFrames.locate(config.ffmpeg)
+        Log.i(TAG, "video thumbnails: ${video.ffmpeg?.let { "ffmpeg at $it" } ?: "off (no ffmpeg found)"}")
+        val generator = ThumbnailGenerator(File(libDir, "thumbs"), store, video) { store.pathFor(it) }
         val thumbCache = ThumbnailCache(db, generator)
         val indexer = LibraryIndexer(db, store, volumeId, probe)
         val scanner = StoreScanner(store, indexer)
@@ -190,6 +195,7 @@ class DesktopServer(private val config: Config) {
                 port = port,
                 httpsPort = httpsPort,
                 fingerprint = tls?.fingerprint,
+                videoDecoder = video.ffmpeg?.absolutePath,
             )
         }
         refresh()
