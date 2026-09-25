@@ -38,6 +38,18 @@ object BackupState {
          * of its own the screen sits on "Backing up 0 of 250" for minutes and reads as a hang.
          */
         val checked: Int = 0,
+        /**
+         * True while a file is being sent, as opposed to fingerprinted.
+         *
+         * [checked] runs ahead of [done] for the whole upload half of every batch, so a screen that
+         * named the phase from those two counters alone said "Checking" all the way through the
+         * uploads -- with a number that could not move, because checking had finished. On a batch
+         * holding a large video that read as a hang for minutes at a time.
+         */
+        val uploading: Boolean = false,
+        /** Bytes of the current file the server has confirmed, for a per-file percentage. */
+        val currentBytes: Long = 0,
+        val currentSize: Long = 0,
         val currentName: String? = null,
         val lastError: String? = null,
         val finishedAt: Long = 0,
@@ -110,7 +122,14 @@ class BackupEngine(
             // Cancellation unwinds through ensureActive(), so without this the card would sit on
             // "Backing up 31 of 402" forever after the user stopped it.
             BackupState.update {
-                it.copy(running = false, currentName = null, finishedAt = System.currentTimeMillis())
+                it.copy(
+                    running = false,
+                    uploading = false,
+                    currentName = null,
+                    currentBytes = 0,
+                    currentSize = 0,
+                    finishedAt = System.currentTimeMillis(),
+                )
             }
         }
     }
@@ -144,7 +163,7 @@ class BackupEngine(
             val hashed = HashMap<String, MutableList<DeviceItem>>()
             for (item in batch) {
                 currentCoroutineContext().ensureActive()
-                BackupState.update { it.copy(currentName = item.name) }
+                BackupState.update { it.copy(uploading = false, currentName = item.name) }
                 val hash = hashOf(item)
                 if (hash == null) {
                     failed++
@@ -175,6 +194,9 @@ class BackupEngine(
                     BackupState.update { it.copy(alreadyOnServer = it.alreadyOnServer + 1) }
                     true
                 } else {
+                    BackupState.update {
+                        it.copy(uploading = true, currentName = item.name, currentBytes = 0, currentSize = item.size)
+                    }
                     val sent = upload(item, hash)
                     if (sent) uploaded++ else failed++
                     BackupState.update {
@@ -282,6 +304,7 @@ class BackupEngine(
             }
             if (next <= offset) return false
             offset = next
+            BackupState.update { it.copy(currentBytes = next) }
         }
 
         val result = api.uploadFinish(uploadId)

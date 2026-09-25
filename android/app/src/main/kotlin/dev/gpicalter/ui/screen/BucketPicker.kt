@@ -151,7 +151,8 @@ fun BucketPicker(prefs: Prefs, hasPermission: Boolean, onChanged: () -> Unit) {
     )
 }
 
-private fun formatSize(bytes: Long): String = when {
+/** Also used by the backup card's per-file progress. */
+internal fun formatSize(bytes: Long): String = when {
     bytes >= 1L shl 30 -> "%.1f GB".format(bytes / 1073741824.0)
     bytes >= 1L shl 20 -> "%.0f MB".format(bytes / 1048576.0)
     else -> "%.0f KB".format(bytes / 1024.0)

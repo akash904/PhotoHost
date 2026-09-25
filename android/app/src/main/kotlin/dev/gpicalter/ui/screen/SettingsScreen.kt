@@ -194,6 +194,13 @@ fun SettingsScreen(
                             // Named by the phase actually running. Reading and hashing every
                             // candidate happens before any upload does, and calling that "backing
                             // up" while the count stands still is what made it look stuck.
+                            //
+                            // The upload half of a batch is asked about first, from the engine's
+                            // own flag: checked stays ahead of done for all of it, so without this
+                            // the screen said "Checking" -- frozen -- while files were being sent.
+                            backup.running && backup.uploading ->
+                                "Uploading ${minOf(backup.done + 1, backup.total)} of ${backup.total}"
+
                             backup.running && backup.checked > backup.done ->
                                 "Checking ${backup.checked} of ${backup.total}"
 
@@ -228,7 +235,17 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    backup.currentName?.let { MonoLine(it) }
+                    backup.currentName?.let { name ->
+                        // A large video is one item for minutes; the percentage is what shows it
+                        // is moving.
+                        val progress = if (backup.uploading && backup.currentSize > 0) {
+                            val pct = (backup.currentBytes * 100 / backup.currentSize).coerceIn(0, 100)
+                            " · $pct% of ${formatSize(backup.currentSize)}"
+                        } else {
+                            ""
+                        }
+                        MonoLine(name + progress)
+                    }
                 }
                 Row(
                     Modifier.padding(top = 4.dp),
