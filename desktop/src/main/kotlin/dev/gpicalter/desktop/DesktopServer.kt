@@ -83,6 +83,10 @@ class DesktopServer(private val config: Config) {
     lateinit var db: AppDatabase
         private set
 
+    /** Copies folders from this PC into the library. Null until [start] has built it. */
+    var importer: FolderImporter? = null
+        private set
+
     private var http: HttpServer? = null
     private var tlsProxy: TlsProxy? = null
     private var runner: JobRunner? = null
@@ -115,6 +119,9 @@ class DesktopServer(private val config: Config) {
         val thumbCache = ThumbnailCache(db, generator)
         val indexer = LibraryIndexer(db, store, volumeId, probe)
         val scanner = StoreScanner(store, indexer)
+        // Runs in this server's scope, so stopping the server (quitting, or switching library)
+        // stops the import without cancelling it: it resumes when this library is served again.
+        importer = FolderImporter(db, store, indexer, probe, volumeId, scope)
 
         val handlers: Map<String, JobHandler> = mapOf(
             JobType.THUMBNAIL to ThumbnailHandler(db, store, generator),
@@ -200,6 +207,7 @@ class DesktopServer(private val config: Config) {
         }
         refresh()
         enqueueScan()
+        runCatching { importer?.resumeOnStartup() }.onFailure { Log.w(TAG, "could not resume import", it) }
         Log.i(TAG, "server up on :$port / :$httpsPort, library ${store.root}, volumeId=$volumeId")
         // Addresses and the certificate pin only. The pairing link carries the access token, and a
         // log file is not a place for a credential: it outlives the session, gets attached to bug

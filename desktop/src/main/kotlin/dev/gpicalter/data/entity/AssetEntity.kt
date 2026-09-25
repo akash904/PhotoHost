@@ -197,4 +197,11 @@ object SourceKind {
     const val MEDIASTORE = 0
     const val STORE_PATH = 1
     const val UPLOAD = 2
+
+    /**
+     * "import:<absolute path>" for a file copied in from a folder on this PC. DIVERGES FROM
+     * gpicAlter (a new value only; the column and schema are unchanged): it is what makes importing
+     * the same folder a second time nearly free.
+     */
+    const val IMPORT_PATH = 3
 }

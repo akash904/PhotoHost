@@ -58,6 +58,13 @@ class PairingWindow(
     private var shownLink: String? = null
     private var server: DesktopServer? = null
     private var watching: Job? = null
+    private var watchingImport: Job? = null
+
+    private val importLine = JLabel(" ")
+    private val importCancel = JButton("Cancel import").apply { isVisible = false }
+    private val importResume = JButton("Resume import").apply { isVisible = false }
+    private val importProblems = JButton("Show problems").apply { isVisible = false }
+    private var importStatus = ImportStatus()
 
     private val buttons = mutableListOf<JButton>()
 
@@ -85,6 +92,19 @@ class PairingWindow(
             if (path.isNotEmpty()) runCatching { Desktop.getDesktop().open(File(path)) }
         }
         val change = button("Change library folder...") { chooseLibrary() }
+        val importButton = button("Import photos...") { chooseImport() }
+        importCancel.addActionListener {
+            val ok = JOptionPane.showConfirmDialog(
+                frame,
+                "Stop this import? Files already copied stay in the library.",
+                "Cancel import", JOptionPane.OK_CANCEL_OPTION,
+            )
+            if (ok == JOptionPane.OK_OPTION) server?.importer?.cancel()
+        }
+        importResume.addActionListener {
+            server?.importer?.start(importStatus.sessionId)
+        }
+        importProblems.addActionListener { showProblems() }
 
         val right = JPanel().apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
@@ -109,6 +129,19 @@ class PairingWindow(
                 add(Box.createHorizontalStrut(8))
                 add(browse)
             })
+            add(Box.createVerticalStrut(14))
+            add(JLabel("<html><b>Add an existing photo archive</b><br>Copies photos and videos from a " +
+                "folder on this PC into the library. Your folder is never changed.</html>"))
+            add(Box.createVerticalStrut(6))
+            add(importLine)
+            add(JPanel(FlowLayout(FlowLayout.LEFT, 0, 8)).apply {
+                add(importButton)
+                add(Box.createHorizontalStrut(8))
+                add(importCancel)
+                add(importResume)
+                add(Box.createHorizontalStrut(8))
+                add(importProblems)
+            })
         }
         right.components.forEach { (it as? javax.swing.JComponent)?.alignmentX = 0f }
 
@@ -131,9 +164,109 @@ class PairingWindow(
     /** Points the window at a (new) server instance, e.g. after the library folder changed. */
     fun attach(next: DesktopServer) {
         watching?.cancel()
+        watchingImport?.cancel()
         server = next
         watching = scope.launch {
             next.status.collect { s -> SwingUtilities.invokeLater { render(s) } }
+        }
+        // The importer only exists once the server has started, which is after this is called.
+        watchingImport = scope.launch {
+            while (next.importer == null) kotlinx.coroutines.delay(100)
+            next.importer!!.status.collect { s -> SwingUtilities.invokeLater { renderImport(s) } }
+        }
+    }
+
+    private fun chooseImport() {
+        val importer = server?.importer ?: return
+        if (importer.busy) return
+        val chooser = JFileChooser().apply {
+            dialogTitle = "Choose a folder of photos to copy into the library"
+            fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+            isAcceptAllFileFilterUsed = false
+        }
+        if (chooser.showDialog(frame, "Import from this folder") != JFileChooser.APPROVE_OPTION) return
+        val source = chooser.selectedFile ?: return
+
+        scope.launch {
+            val found = try {
+                importer.discover(source)
+            } catch (t: Throwable) {
+                SwingUtilities.invokeLater {
+                    JOptionPane.showMessageDialog(frame, t.message ?: t.toString(), "Cannot import", JOptionPane.WARNING_MESSAGE)
+                }
+                return@launch
+            }
+            SwingUtilities.invokeLater { confirmImport(importer, source, found) }
+        }
+    }
+
+    private fun confirmImport(importer: FolderImporter, source: File, found: Discovery) {
+        if (found.files == 0) {
+            JOptionPane.showMessageDialog(frame, "No photos or videos were found in\n${source.absolutePath}")
+            scope.launch { importer.discard(found.sessionId) }
+            return
+        }
+        val size = FolderImporter.formatBytes(found.bytes)
+        val free = found.freeBytes?.let { FolderImporter.formatBytes(it) } ?: "unknown"
+        val tight = found.freeBytes != null && found.bytes + FolderImporter.RESERVE_BYTES > found.freeBytes
+        val message = buildString {
+            append("<html>Found <b>${"%,d".format(found.files)}</b> photos and videos (<b>$size</b>) in<br>")
+            append("<b>${source.absolutePath}</b><br><br>")
+            append("The library drive has <b>$free</b> free.<br>")
+            if (tight) {
+                append("<font color='#b00020'>That may not be enough. Files already in the library are skipped, " +
+                    "so it may still fit;<br>if space runs low the import pauses rather than filling the drive.</font><br>")
+            }
+            if (found.unreadable > 0) append("${found.unreadable} items could not be read and will be left out.<br>")
+            append("<br>Each file is copied into the library and checked. Your folder is not changed.<br>")
+            append("Photos already in the library are skipped. You can close PhotoHost and it carries on next time.</html>")
+        }
+        val ok = JOptionPane.showConfirmDialog(frame, message, "Import photos", JOptionPane.OK_CANCEL_OPTION)
+        if (ok == JOptionPane.OK_OPTION) {
+            importer.start(found.sessionId)
+        } else {
+            scope.launch { importer.discard(found.sessionId) }
+        }
+    }
+
+    private fun renderImport(s: ImportStatus) {
+        importStatus = s
+        val fmt = FolderImporter::formatBytes
+        importLine.text = when (s.phase) {
+            ImportStatus.Phase.IDLE -> " "
+            ImportStatus.Phase.DISCOVERING -> "Listing files in ${s.source}... ${"%,d".format(s.total)} found"
+            ImportStatus.Phase.AWAITING_CONFIRM -> "Found ${"%,d".format(s.total)} files (${fmt(s.bytesTotal)})"
+            ImportStatus.Phase.RUNNING -> "<html>Importing <b>${"%,d".format(s.done)}</b> of ${"%,d".format(s.total)}" +
+                " &middot; ${fmt(s.bytesDone)} of ${fmt(s.bytesTotal)}<br>" + importCounts(s) +
+                (s.current?.let { "<br><font color='#666666'>$it</font>" } ?: "") + "</html>"
+            ImportStatus.Phase.PAUSED -> "<html><b>Import paused.</b> ${s.message ?: ""}<br>${importCounts(s)}</html>"
+            ImportStatus.Phase.DONE -> "<html><b>Import finished.</b> ${importCounts(s)}</html>"
+            ImportStatus.Phase.CANCELLED -> "<html>Import stopped. ${importCounts(s)}</html>"
+            ImportStatus.Phase.FAILED -> "<html><font color='#b00020'><b>Import failed:</b> ${s.message}</font></html>"
+        }
+        importCancel.isVisible = s.phase == ImportStatus.Phase.RUNNING
+        importResume.isVisible = s.phase == ImportStatus.Phase.PAUSED
+        importProblems.isVisible = s.failed > 0
+        frame.pack()
+    }
+
+    private fun importCounts(s: ImportStatus): String = buildList {
+        add("${"%,d".format(s.copied)} copied")
+        if (s.duplicates > 0) add("${"%,d".format(s.duplicates)} already in the library")
+        if (s.unchanged > 0) add("${"%,d".format(s.unchanged)} imported before")
+        if (s.failed > 0) add("${"%,d".format(s.failed)} could not be copied")
+    }.joinToString(" &middot; ")
+
+    private fun showProblems() {
+        val importer = server?.importer ?: return
+        val id = importStatus.sessionId
+        scope.launch {
+            val rows = importer.failures(id)
+            val text = rows.joinToString("\n") { "${it.sourceUri}\n    ${it.lastError}" }.ifEmpty { "No problems recorded." }
+            SwingUtilities.invokeLater {
+                val area = JTextArea(text, 18, 80).apply { isEditable = false; font = Font(Font.MONOSPACED, Font.PLAIN, 12) }
+                JOptionPane.showMessageDialog(frame, JScrollPane(area), "Files that could not be imported", JOptionPane.PLAIN_MESSAGE)
+            }
         }
     }
 

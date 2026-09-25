@@ -1,6 +1,7 @@
 package dev.gpicalter.index
 
 import dev.gpicalter.core.Log
+import dev.gpicalter.core.DualHash
 import dev.gpicalter.core.dualHash
 import dev.gpicalter.data.db.AppDatabase
 import dev.gpicalter.data.entity.AssetEntity
@@ -54,12 +55,17 @@ class LibraryIndexer(
      *   MediaStore's DATE_TAKEN, say. Used only when extraction produced something weak, because a
      *   freshly written file's mtime is the moment it was written, which would silently re-date
      *   every uploaded screenshot to "now".
+     * @param knownHash the hash of exactly these bytes, when the caller has just computed it by
+     *   reading the stored file back. DIVERGES FROM gpicAlter: the folder importer verifies every
+     *   copy that way, and hashing it again here would be a third full read of each file -- a real
+     *   cost across a multi-terabyte archive. Never pass a hash of anything but the stored file.
      */
     suspend fun index(
         entry: StoreEntry,
         force: Boolean = false,
         capturedAtHint: Long? = null,
         sourceAlbum: String? = null,
+        knownHash: DualHash? = null,
     ): IndexResult {
         val sourceKey = "vol:$volumeId:${entry.relPath}"
 
@@ -73,7 +79,7 @@ class LibraryIndexer(
             }
         }
 
-        val hash = try {
+        val hash = knownHash ?: try {
             store.openRead(entry.relPath).use { it.inputStream().dualHash() }
         } catch (t: Throwable) {
             return IndexResult.Failed("hash: ${t.javaClass.simpleName}: ${t.message}")

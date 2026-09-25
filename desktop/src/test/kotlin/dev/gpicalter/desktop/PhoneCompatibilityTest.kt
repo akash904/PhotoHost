@@ -495,16 +495,20 @@ class PhoneCompatibilityTest {
         return r > 180 && g < 80 && b < 80
     }
 
-    /** A free port P whose TLS twin P+363 is also free. */
-    private fun freePortPair(): Int {
-        repeat(50) {
-            val p = ServerSocket(0).use { it.localPort }
-            if (p + Config.TLS_PORT_OFFSET < 65535 && runCatching { ServerSocket(p + Config.TLS_PORT_OFFSET).close() }.isSuccess) {
-                return p
-            }
+}
+
+/**
+ * A free port P whose TLS twin P+363 is also free. Every test that starts a server needs both;
+ * picking P alone made start-up fail at random whenever P+363 happened to be taken.
+ */
+fun freePortPair(): Int {
+    repeat(50) {
+        val p = ServerSocket(0).use { it.localPort }
+        if (p + Config.TLS_PORT_OFFSET < 65535 && runCatching { ServerSocket(p + Config.TLS_PORT_OFFSET).close() }.isSuccess) {
+            return p
         }
-        error("no free port pair")
     }
+    error("no free port pair")
 }
 
 /** Separate server lifetimes: what survives a restart. */
@@ -516,11 +520,11 @@ class RestartTest {
         val libraryDir = Files.createTempDirectory("photohost-lib").toFile()
         try {
             Fixtures.build(libraryDir)
-            val port = ServerSocket(0).use { it.localPort }
+            val port = freePortPair()
 
             val first = Config.load(dataDir).apply { libraryRoot = libraryDir; this.port = port }
             val s1 = DesktopServer(first)
-            assertTrue(s1.start())
+            assertTrue(s1.start(), s1.status.value.error ?: "")
             val fp1 = s1.status.value.fingerprint
             val token1 = first.token()
             awaitAssets(s1, Fixtures.MEDIA_COUNT)
@@ -531,7 +535,7 @@ class RestartTest {
             assertEquals(libraryDir.absolutePath, second.libraryRoot.absolutePath)
             assertEquals(token1, second.token())
             val s2 = DesktopServer(second)
-            assertTrue(s2.start())
+            assertTrue(s2.start(), s2.status.value.error ?: "")
             assertEquals(fp1, s2.status.value.fingerprint, "a new certificate would un-pair every client")
             // The start-up scan must skip every file on the fingerprint gate rather than re-hash it.
             val deadline = System.currentTimeMillis() + 30_000

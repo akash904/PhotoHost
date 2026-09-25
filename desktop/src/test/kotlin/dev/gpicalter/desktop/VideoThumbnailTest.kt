@@ -35,7 +35,7 @@ class VideoThumbnailTest {
             Fixtures.build(libraryDir)
             val cfg = Config.load(dataDir).apply {
                 libraryRoot = libraryDir
-                port = java.net.ServerSocket(0).use { it.localPort }
+                port = freePortPair()
             }
             val server = DesktopServer(cfg)
             assertTrue(server.start(), server.status.value.error ?: "")
