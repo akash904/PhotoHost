@@ -15,7 +15,25 @@ Not in this milestone: video and HEIC thumbnails (those files index, list and pl
 jobs wait as BLOCKED until a decoder ships), importing from other folders, installer, tray icon,
 autostart.
 
-## Run
+## Run the app
+
+Double-click `PhotoHost.exe` in the `PhotoHost` folder built by `gradlew packageExe`
+(`build\package\PhotoHost`). The folder carries its own Java runtime (about 75 MB), so nothing needs
+installing. It can be copied or zipped anywhere, but the exe must stay next to its `app` and
+`runtime` folders.
+
+The window shows the pairing QR code and link. **Change library folder...** picks the folder to
+serve. Each library folder gets its own index, and paired phones stay paired across a change.
+**Open in browser** opens the web UI on this PC. Closing the window stops the server.
+
+```sh
+JAVA_HOME="/c/Program Files/Android/Android Studio/jbr" ./gradlew packageExe
+```
+
+The first `packageExe` downloads a Temurin 25 JDK into Gradle's cache: Android Studio's bundled JDK
+compiles fine but has no `jpackage`.
+
+## Run from source
 
 Needs a JDK 21+. Android Studio's bundled one works:
 
@@ -25,8 +43,6 @@ JAVA_HOME="/c/Program Files/Android/Android Studio/jbr" ./gradlew run --args="--
 JAVA_HOME="/c/Program Files/Android/Android Studio/jbr" ./gradlew test
 ```
 
-A window shows the pairing QR code and link. Closing it stops the server.
-
 | Option | Meaning |
 |---|---|
 | `--library <dir>` | Library folder; remembered. Default `%USERPROFILE%\PhotoHost Library` (not Pictures, which OneDrive often syncs) |
@@ -35,8 +51,8 @@ A window shows the pairing QR code and link. Closing it stops the server.
 | `--headless` | No window; prints the pairing link |
 | `--print-endpoints` | Lists network adapters and what would be advertised, then exits |
 
-The data directory holds `config.properties` (port, token, library), `gpic.db`, `thumbs/`, `tls/`,
-`staging/` and `photohost.log`. The library folder holds only originals, plus a hidden
+The data directory holds `config.properties` (port, token, library), `tls/`, `photohost.log`, and
+`libraries/<library-id>/` with each library's `gpic.db`, `thumbs/` and `staging/`. The library folder holds only originals, plus a hidden
 `.gpic-library-id` that keeps its identity if the drive letter changes.
 
 Files copied into the library folder are picked up at start-up, or with **Rescan library**.

@@ -94,14 +94,19 @@ class DesktopServer(private val config: Config) {
         Log.file = File(dataDir, "photohost.log")
 
         val store = FolderStore(config.libraryRoot)
-        db = AppDatabase.open(File(dataDir, AppDatabase.NAME))
+        // One index per library folder, keyed on the id stored inside the folder. Choosing a
+        // different folder must not show the previous folder's photos, which the new store cannot
+        // serve; choosing the old one again must find its index intact rather than re-hash it all.
+        // Token and TLS identity stay shared at the top level, so paired clients stay paired.
+        val libDir = File(dataDir, "libraries/" + store.volumeKey().substringAfter("folder:")).apply { mkdirs() }
+        db = AppDatabase.open(File(libDir, AppDatabase.NAME))
         val volumeId = ensureVolume(store)
         val port = config.port
         val httpsPort = config.httpsPort
         val token = config.token()
 
         val probe = DesktopMediaProbe()
-        val generator = ThumbnailGenerator(File(dataDir, "thumbs"), store)
+        val generator = ThumbnailGenerator(File(libDir, "thumbs"), store)
         val thumbCache = ThumbnailCache(db, generator)
         val indexer = LibraryIndexer(db, store, volumeId, probe)
         val scanner = StoreScanner(store, indexer)
@@ -132,7 +137,7 @@ class DesktopServer(private val config: Config) {
             db = db,
             store = store,
             indexer = indexer,
-            stagingRoot = File(dataDir, "staging"),
+            stagingRoot = File(libDir, "staging"),
         )
         uploads.sweepStale()
 

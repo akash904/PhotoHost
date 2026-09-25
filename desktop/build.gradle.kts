@@ -72,6 +72,59 @@ dependencies {
     testImplementation(libs.ktor.client.content.negotiation)
 }
 
+// ------------------------------------------------------------------ Windows packaging
+//
+// `gradlew packageExe` -> build/package/PhotoHost/PhotoHost.exe, a folder that runs on any 64-bit
+// Windows PC with nothing installed: it carries its own trimmed Java runtime. The folder can be
+// zipped or copied anywhere. An MSI installer comes later; jpackage needs the WiX toolset for that.
+//
+// jpackage is not in Android Studio's bundled JDK, so the packaging JDK is a Gradle toolchain
+// (Temurin 25), downloaded into Gradle's cache on first use.
+
+val packagingJdk = javaToolchains.launcherFor {
+    languageVersion.set(JavaLanguageVersion.of(25))
+    vendor.set(JvmVendorSpec.ADOPTIUM)
+}
+
+// From `jdeps --print-module-deps` over every runtime jar, plus jdk.charsets, which jdeps cannot see
+// because EXIF text in legacy encodings is decoded by charset name at run time.
+val runtimeModules = listOf(
+    "java.base", "java.desktop", "java.instrument", "java.management", "java.sql",
+    "jdk.unsupported", "jdk.charsets",
+)
+
+val cleanPackage = tasks.register<Delete>("cleanPackage") {
+    delete(layout.buildDirectory.dir("package"))
+}
+
+tasks.register<Exec>("packageExe") {
+    group = "distribution"
+    description = "Builds build/package/PhotoHost/PhotoHost.exe with a bundled Java runtime."
+    dependsOn(tasks.installDist, cleanPackage)
+
+    val libDir = layout.buildDirectory.dir("install/${project.name}/lib")
+    val outDir = layout.buildDirectory.dir("package")
+    inputs.dir(libDir)
+    outputs.dir(outDir)
+
+    executable = packagingJdk.get().metadata.installationPath.file("bin/jpackage.exe").asFile.absolutePath
+    args(
+        "--type", "app-image",
+        "--name", "PhotoHost",
+        // jpackage wants a purely numeric version.
+        "--app-version", "0.1.0",
+        "--vendor", "PhotoHost",
+        "--description", "Photo library server for the PhotoHost phone app",
+        "--input", libDir.get().asFile.absolutePath,
+        "--main-jar", "${project.name}-${project.version}.jar",
+        "--main-class", "dev.gpicalter.desktop.MainKt",
+        "--add-modules", runtimeModules.joinToString(","),
+        "--jlink-options", "--strip-debug --no-man-pages --no-header-files --compress=zip-6",
+        "--dest", outDir.get().asFile.absolutePath,
+    )
+    jvmFlags.forEach { args("--java-options", it) }
+}
+
 tasks.test {
     useJUnitPlatform()
     jvmArgs(jvmFlags)

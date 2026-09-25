@@ -4,13 +4,15 @@ import dev.gpicalter.server.NetInterfaces
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import kotlin.system.exitProcess
 
 /**
- * Entry point.
+ * Entry point. With no arguments -- which is how PhotoHost.exe starts -- it opens the window; the
+ * library folder can be chosen there.
  *
  *     photohost [--library <dir>] [--data <dir>] [--port <n>] [--headless] [--print-endpoints]
  *
@@ -36,11 +38,9 @@ fun main(args: Array<String>) {
     opts["library"]?.let { config.libraryRoot = File(it) }
     opts["port"]?.toIntOrNull()?.let { config.port = it }
 
-    val server = DesktopServer(config)
-    val started = runBlocking { server.start() }
-
     if ("headless" in opts) {
-        if (!started) {
+        val server = DesktopServer(config)
+        if (!runBlocking { server.start() }) {
             System.err.println(server.status.value.error)
             exitProcess(1)
         }
@@ -52,14 +52,43 @@ fun main(args: Array<String>) {
         return
     }
 
+    runWithWindow(config)
+}
+
+/**
+ * The normal way in: double-clicking PhotoHost.exe. The window comes up first and the server behind
+ * it, so a server that fails to start still has somewhere to say why.
+ */
+private fun runWithWindow(config: Config) {
     val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    var server = DesktopServer(config)
+    val lock = Any()
+
     lateinit var window: PairingWindow
-    window = PairingWindow(server, uiScope) {
-        server.stop()
-        window.close()
-        exitProcess(0)
-    }
-    javax.swing.SwingUtilities.invokeLater { window.show() }
+    window = PairingWindow(
+        scope = uiScope,
+        onChangeLibrary = { folder ->
+            window.setBusy("Switching library...")
+            uiScope.launch {
+                // Serialised: two quick changes must not leave two servers fighting over one port.
+                synchronized(lock) {
+                    server.stop()
+                    config.libraryRoot = folder
+                    server = DesktopServer(config)
+                    window.attach(server)
+                }
+                server.start()
+            }
+        },
+        onQuit = {
+            synchronized(lock) { server.stop() }
+            window.close()
+            exitProcess(0)
+        },
+    )
+    javax.swing.SwingUtilities.invokeAndWait { window.show() }
+    window.attach(server)
+    runBlocking { server.start() }
 }
 
 private fun parseArgs(args: Array<String>): Map<String, String> {
