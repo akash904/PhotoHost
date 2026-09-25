@@ -112,6 +112,8 @@ class PairingWindow(
         }
         right.components.forEach { (it as? javax.swing.JComponent)?.alignmentX = 0f }
 
+        // Title bar and taskbar; Windows picks whichever size fits the DPI.
+        frame.iconImages = listOf(16, 20, 24, 32, 40, 48, 64, 256).map { AppIcon.render(it) }
         frame.contentPane.layout = BorderLayout()
         frame.contentPane.add(qr.apply { border = BorderFactory.createEmptyBorder(12, 12, 12, 0) }, BorderLayout.WEST)
         frame.contentPane.add(right, BorderLayout.CENTER)

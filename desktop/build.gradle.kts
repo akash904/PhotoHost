@@ -97,10 +97,20 @@ val cleanPackage = tasks.register<Delete>("cleanPackage") {
     delete(layout.buildDirectory.dir("package"))
 }
 
+// The exe's icon is drawn by the app's own code (AppIcon.kt, a transcription of the phone app's
+// adaptive icon), so the window, the taskbar and Explorer can never disagree about what it looks like.
+val iconFile = layout.buildDirectory.file("icon/PhotoHost.ico")
+val generateIcon = tasks.register<JavaExec>("generateIcon") {
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("dev.gpicalter.desktop.AppIconKt")
+    args(iconFile.get().asFile.absolutePath, layout.buildDirectory.file("icon/preview.png").get().asFile.absolutePath)
+    outputs.file(iconFile)
+}
+
 tasks.register<Exec>("packageExe") {
     group = "distribution"
     description = "Builds build/package/PhotoHost/PhotoHost.exe with a bundled Java runtime."
-    dependsOn(tasks.installDist, cleanPackage)
+    dependsOn(tasks.installDist, cleanPackage, generateIcon)
 
     val libDir = layout.buildDirectory.dir("install/${project.name}/lib")
     val outDir = layout.buildDirectory.dir("package")
@@ -121,8 +131,13 @@ tasks.register<Exec>("packageExe") {
         "--add-modules", runtimeModules.joinToString(","),
         "--jlink-options", "--strip-debug --no-man-pages --no-header-files --compress=zip-6",
         "--dest", outDir.get().asFile.absolutePath,
+        "--icon", iconFile.get().asFile.absolutePath,
     )
     jvmFlags.forEach { args("--java-options", it) }
+    // Without a cap the JVM reserves up to a quarter of the PC's RAM and, being lazy about giving it
+    // back, an idle server was observed at 644 MB. Decoding is subsampled, so even a 50 MP photo
+    // needs a few tens of MB; 512 MB leaves room for several thumbnails in parallel.
+    args("--java-options", "-Xmx512m")
 }
 
 tasks.test {
