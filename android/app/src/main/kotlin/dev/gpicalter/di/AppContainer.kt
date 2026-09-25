@@ -10,6 +10,7 @@ import coil3.disk.directory
 import coil3.memory.MemoryCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import dev.gpicalter.data.entity.VolumeEntity
+import dev.gpicalter.net.ImageOnlyCacheStrategy
 import dev.gpicalter.net.LibraryApi
 import dev.gpicalter.net.NetworkWatcher
 import dev.gpicalter.net.RemoteAccess
@@ -96,6 +97,9 @@ class AppContainer private constructor(context: Context) {
                 add(
                     OkHttpNetworkFetcherFactory(
                         callFactory = { okhttp3.Call.Factory { request -> http.newCall(request) } },
+                        // Coil's default caches any 2xx forever, including a server's "thumbnail
+                        // not ready" JSON; see ImageOnlyCacheStrategy.
+                        cacheStrategy = { ImageOnlyCacheStrategy },
                     ),
                 )
             }
