@@ -77,3 +77,21 @@ fun joinRel(parent: String, child: String): String {
 
 fun relSegments(relPath: String): List<String> =
     relPath.split('/').filter { it.isNotEmpty() }
+
+/**
+ * Refuses any relative path that could name something outside the store: a `.` or `..` segment,
+ * or a NUL. Returns the path unchanged when it is safe.
+ *
+ * Relative paths arrive from HTTP (`/api/v1/fs/read?path=`, `/api/v1/fs/list?path=`), and a store
+ * that simply joined them onto its root served whatever `../..` pointed at -- for InternalStore
+ * that reached the app's private files, including the TLS private key and its password, so any
+ * paired device could read the key and impersonate the server. Paths from the database never
+ * contain these segments, so nothing legitimate is refused.
+ */
+fun requireConfined(relPath: String): String {
+    if (relPath.indexOf('\u0000') >= 0) throw java.io.FileNotFoundException("refused path")
+    for (seg in relPath.split('/')) {
+        if (seg == "." || seg == "..") throw java.io.FileNotFoundException("refused path: $relPath")
+    }
+    return relPath
+}

@@ -87,6 +87,9 @@ class SafStore(
 
     /** Resolves a relative path to a document id, or null when it genuinely is not there. */
     fun resolveDocumentId(relPath: String): String? {
+        // The deterministic id is built from the string, so "../x" would become a document id
+        // outside the granted tree. Every read, list, stat, delete and write resolves through here.
+        requireConfined(relPath)
         if (relSegments(relPath).isEmpty()) return treeDocId
         val direct = deterministicDocumentId(relPath)
         if (documentExists(direct)) return direct
@@ -182,7 +185,7 @@ class SafStore(
     }
 
     private fun createFile(relPath: String, mime: String): String {
-        val segs = relSegments(relPath)
+        val segs = relSegments(requireConfined(relPath))
         require(segs.isNotEmpty()) { "cannot create the store root as a file" }
         val name = segs.last()
         val parentRel = segs.dropLast(1).joinToString("/")
@@ -204,7 +207,7 @@ class SafStore(
 
     override fun mkdirs(relPath: String) {
         var currentRel = ""
-        for (seg in relSegments(relPath)) {
+        for (seg in relSegments(requireConfined(relPath))) {
             val next = joinRel(currentRel, seg)
             if (resolveDocumentId(next) == null) {
                 val parentId = resolveDocumentId(currentRel)

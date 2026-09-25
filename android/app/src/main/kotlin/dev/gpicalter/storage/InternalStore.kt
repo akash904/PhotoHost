@@ -32,8 +32,21 @@ class InternalStore(context: Context) : LibraryStore {
     override val isMounted: Boolean get() = root.isDirectory
     override val isWritable: Boolean get() = root.canWrite()
 
-    private fun fileFor(relPath: String): File =
-        if (relPath.isBlank()) root else File(root, relPath.trim('/'))
+    /**
+     * Confined to [root] twice over: `..` segments are refused outright, and the canonical result
+     * must still sit under the canonical root, which also catches a symlink placed inside the library
+     * that points out of it.
+     */
+    private fun fileFor(relPath: String): File {
+        if (relPath.isBlank()) return root
+        val f = File(root, requireConfined(relPath).trim('/'))
+        val rootPath = root.canonicalPath
+        val path = f.canonicalPath
+        if (path != rootPath && !path.startsWith(rootPath + File.separator)) {
+            throw FileNotFoundException("refused path: $relPath")
+        }
+        return f
+    }
 
     override fun list(relPath: String): List<StoreEntry> {
         val dir = fileFor(relPath)
