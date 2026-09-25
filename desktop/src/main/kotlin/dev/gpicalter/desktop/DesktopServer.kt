@@ -201,7 +201,10 @@ class DesktopServer(private val config: Config) {
         refresh()
         enqueueScan()
         Log.i(TAG, "server up on :$port / :$httpsPort, library ${store.root}, volumeId=$volumeId")
-        Log.i(TAG, "pairing link: ${_status.value.pairingLink}")
+        // Addresses and the certificate pin only. The pairing link carries the access token, and a
+        // log file is not a place for a credential: it outlives the session, gets attached to bug
+        // reports, and is readable by anything that can read the data directory.
+        Log.i(TAG, "advertising ${_status.value.addresses}, TLS pin ${tls?.fingerprint}")
 
         heartbeat = scope.launch {
             while (isActive) {
