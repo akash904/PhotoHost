@@ -303,11 +303,15 @@ class PhoneCompatibilityTest {
     }
 
     @Test
-    fun `formats without a decoder answer 202 and park their jobs as blocked`() = runBlocking {
+    fun `formats without a decoder answer 503 and park their jobs as blocked`() = runBlocking {
         for (rel in listOf(Fixtures.HEIC, Fixtures.VIDEO)) {
             val id = detail(rel).id
             val r = api.get("$base/api/v1/assets/$id/thumb")
-            assertEquals(202, r.status.value, rel)
+            // Not 202: the phone's Coil caches every 2xx forever, so "not yet" must be a status it
+            // will not store. See HttpServer.serveThumb.
+            assertEquals(503, r.status.value, rel)
+            assertEquals("2", r.headers[HttpHeaders.RetryAfter])
+            assertTrue(r.headers[HttpHeaders.CacheControl].orEmpty().contains("no-store"))
         }
         val stats = api.get("$base/api/v1/stats").body<StatsDto>()
         assertEquals(4, stats.blockedJobs, "grid + preview for each of the two undecodable files")

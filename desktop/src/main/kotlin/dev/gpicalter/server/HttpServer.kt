@@ -487,9 +487,17 @@ class HttpServer(
      * Thumbnails are immutable once generated -- their filename contains the content hash -- so they
      * get a one-year immutable cache header and an ETag. A client that has seen one never asks again.
      *
-     * A thumbnail that has not been rendered yet returns **202**, not 404: the asset exists and the
-     * image is coming. The client already drew the blurhash, so it just retries or waits for the
-     * event rather than showing a broken image.
+     * A thumbnail that has not been rendered yet returns **503 with Retry-After**, not 404: the asset
+     * exists and the image is coming. The client already drew the blurhash, so it just retries later
+     * rather than showing a broken image.
+     *
+     * DIVERGES FROM gpicAlter, which answers **202** here -- and that is a bug on the phone too. The
+     * phone app loads thumbnails with Coil 3, whose default cache strategy stores every 2xx response
+     * (and 404) in its disk cache regardless of Cache-Control, then serves it forever without asking
+     * again (coil-network-core 3.6.3, DefaultCacheStrategy). So a grid that scrolled past a thumbnail
+     * before it was rendered cached the 48-byte JSON as the image, and that tile stayed blank for
+     * good. Observed on a real phone: every video backed up before video thumbnails existed. 503 is
+     * the one "try again later" status Coil never caches.
      */
     private suspend fun serveThumb(call: ApplicationCall) {
         if (call.denied()) return
@@ -501,17 +509,14 @@ class HttpServer(
         val row = db.thumbnails().find(id, sizeClass)
 
         if (row?.state != ThumbState.READY || row.cacheRelPath == null) {
-            call.respond(
-                HttpStatusCode.Accepted,
-                mapOf("state" to (row?.state ?: ThumbState.ABSENT).toString(), "retryAfterMs" to "2000"),
-            )
+            notReady(call, (row?.state ?: ThumbState.ABSENT).toString())
             return
         }
         val file = thumbs.cacheFile(asset.contentHash, sizeClass)
         if (!file.isFile) {
             // Row says ready but the bytes are gone: the cache was cleared or evicted underneath us.
             db.thumbnails().delete(id, sizeClass)
-            call.respond(HttpStatusCode.Accepted, mapOf("state" to "REGENERATING", "retryAfterMs" to "2000"))
+            notReady(call, "REGENERATING")
             return
         }
 
@@ -534,6 +539,13 @@ class HttpServer(
         call.response.header(HttpHeaders.ETag, etag)
         call.response.cacheControl(CacheControl.MaxAge(maxAgeSeconds = 31_536_000, visibility = CacheControl.Visibility.Private))
         call.respondBytes(file.readBytes(), ContentType.Image.JPEG)
+    }
+
+    /** "Not yet": uncacheable by any client, with the same JSON body the phone's server sends. */
+    private suspend fun notReady(call: ApplicationCall, state: String) {
+        call.response.header(HttpHeaders.RetryAfter, "2")
+        call.response.cacheControl(CacheControl.NoStore(null))
+        call.respond(HttpStatusCode.ServiceUnavailable, mapOf("state" to state, "retryAfterMs" to "2000"))
     }
 
     private suspend fun serveOriginal(call: ApplicationCall, headOnly: Boolean) {
