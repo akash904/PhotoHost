@@ -145,19 +145,26 @@ class FolderImporter(
         }
     }
 
+    /** A whole folder, including everything under it. */
+    suspend fun discover(source: File): Discovery = discover(listOf(source))
+
     /**
-     * Lists [source] and records every media file in it, copying nothing yet. The caller shows the
-     * result and then calls [start] or [discard].
+     * Lists [sources] -- folders, individual files, or a mix -- and records every media file among
+     * them, copying nothing yet. The caller shows the result and then calls [start] or [discard].
      */
-    suspend fun discover(source: File): Discovery = withContext(Dispatchers.IO) {
+    suspend fun discover(sources: List<File>): Discovery = withContext(Dispatchers.IO) {
         check(!busy) { "an import is already running" }
-        val root = source.toPath().toAbsolutePath().normalize()
-        require(Files.isDirectory(root)) { "not a folder: $root" }
+        require(sources.isNotEmpty()) { "nothing chosen" }
+        val roots = sources.map { it.toPath().toAbsolutePath().normalize() }
         val lib = library.root
-        require(!root.startsWith(lib) && !lib.startsWith(root)) {
-            "Choose a folder outside the library. Importing the library into itself, or a folder that " +
-                "contains the library, would copy the library's own files back in."
+        for (root in roots) {
+            require(Files.exists(root)) { "not found: $root" }
+            require(!root.startsWith(lib) && !(Files.isDirectory(root) && lib.startsWith(root))) {
+                "Choose something outside the library. Importing the library into itself, or a folder " +
+                    "that contains the library, would copy the library's own files back in."
+            }
         }
+        val label = if (roots.size == 1) roots[0].toString() else "${roots.size} selected items"
 
         val now = System.currentTimeMillis()
         val sessionId = db.imports().createSession(
@@ -169,7 +176,7 @@ class FolderImporter(
                 updatedAt = now,
             ),
         )
-        _status.value = ImportStatus(ImportStatus.Phase.DISCOVERING, sessionId, root.toString(), message = "Listing files...")
+        _status.value = ImportStatus(ImportStatus.Phase.DISCOVERING, sessionId, label, message = "Listing files...")
 
         var files = 0
         var bytes = 0L
@@ -183,23 +190,33 @@ class FolderImporter(
             }
         }
 
-        val found = ArrayList<Pair<Path, BasicFileAttributes>>()
-        Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
-            override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
-                if (dir != root && skipDirectory(dir.fileName.toString())) return FileVisitResult.SKIP_SUBTREE
-                return FileVisitResult.CONTINUE
+        // A file chosen twice -- picked directly and also inside a chosen folder -- is listed once.
+        val found = LinkedHashMap<Path, BasicFileAttributes>()
+        for (root in roots) {
+            if (!Files.isDirectory(root)) {
+                // Chosen individually: taken as long as it is a photo or video.
+                runCatching { Files.readAttributes(root, BasicFileAttributes::class.java) }
+                    .onSuccess { if (it.isRegularFile && isMedia(root.fileName.toString())) found[root] = it }
+                    .onFailure { unreadable++ }
+                continue
             }
+            Files.walkFileTree(root, object : SimpleFileVisitor<Path>() {
+                override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
+                    if (dir != root && skipDirectory(dir.fileName.toString())) return FileVisitResult.SKIP_SUBTREE
+                    return FileVisitResult.CONTINUE
+                }
 
-            override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
-                if (attrs.isRegularFile && isMedia(file.fileName.toString())) found += file to attrs
-                return FileVisitResult.CONTINUE
-            }
+                override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                    if (attrs.isRegularFile && isMedia(file.fileName.toString())) found[file] = attrs
+                    return FileVisitResult.CONTINUE
+                }
 
-            override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult {
-                unreadable++
-                return FileVisitResult.CONTINUE
-            }
-        })
+                override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult {
+                    unreadable++
+                    return FileVisitResult.CONTINUE
+                }
+            })
+        }
 
         for ((file, attrs) in found) {
             currentCoroutineContext().ensureActive()
@@ -224,10 +241,10 @@ class FolderImporter(
         }
         val free = freeSpace()
         _status.value = ImportStatus(
-            ImportStatus.Phase.AWAITING_CONFIRM, sessionId, root.toString(),
+            ImportStatus.Phase.AWAITING_CONFIRM, sessionId, label,
             total = files, bytesTotal = bytes,
         )
-        Log.i(TAG, "import: listed $files files, $bytes bytes in $root ($unreadable unreadable)")
+        Log.i(TAG, "import: listed $files files, $bytes bytes in $label ($unreadable unreadable)")
         Discovery(sessionId, files, bytes, free, unreadable)
     }
 
@@ -537,6 +554,9 @@ class FolderImporter(
         )
 
         fun isMedia(name: String): Boolean = name.substringAfterLast('.', "").lowercase() in MEDIA_EXTENSIONS
+
+        /** `*.jpg`-style patterns for a file dialog's "Photos and videos" filter. */
+        val MEDIA_PATTERNS: List<String> get() = MEDIA_EXTENSIONS.map { "*.$it" }
 
         /** Folders that are never someone's photos: system, recycle bin, and hidden ones. */
         private fun skipDirectory(name: String): Boolean =

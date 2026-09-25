@@ -92,7 +92,8 @@ class PairingWindow(
             if (path.isNotEmpty()) runCatching { Desktop.getDesktop().open(File(path)) }
         }
         val change = button("Change library folder...") { chooseLibrary() }
-        val importButton = button("Import photos...") { chooseImport() }
+        val importFolderButton = button("Import a folder...") { chooseImportFolder() }
+        val importFilesButton = button("Import photos...") { chooseImportFiles() }
         importCancel.addActionListener {
             val ok = JOptionPane.showConfirmDialog(
                 frame,
@@ -130,12 +131,14 @@ class PairingWindow(
                 add(browse)
             })
             add(Box.createVerticalStrut(14))
-            add(JLabel("<html><b>Add an existing photo archive</b><br>Copies photos and videos from a " +
-                "folder on this PC into the library. Your folder is never changed.</html>"))
+            add(JLabel("<html><b>Add photos from this PC</b><br>Copies a whole folder, or photos and " +
+                "videos you pick, into the library. The originals are never changed.</html>"))
             add(Box.createVerticalStrut(6))
             add(importLine)
             add(JPanel(FlowLayout(FlowLayout.LEFT, 0, 8)).apply {
-                add(importButton)
+                add(importFolderButton)
+                add(Box.createHorizontalStrut(8))
+                add(importFilesButton)
                 add(Box.createHorizontalStrut(8))
                 add(importCancel)
                 add(importResume)
@@ -176,33 +179,78 @@ class PairingWindow(
         }
     }
 
-    private fun chooseImport() {
+    /** A whole folder, everything under it included. */
+    private fun chooseImportFolder() {
         val importer = server?.importer ?: return
         if (importer.busy) return
-        val chooser = JFileChooser().apply {
-            dialogTitle = "Choose a folder of photos to copy into the library"
-            fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-            isAcceptAllFileFilterUsed = false
-        }
-        if (chooser.showDialog(frame, "Import from this folder") != JFileChooser.APPROVE_OPTION) return
-        val source = chooser.selectedFile ?: return
+        val picked = pickFolder("Choose a folder of photos to copy into the library", "Import this folder", null)
+            ?: return
+        startImport(importer, listOf(picked), picked.absolutePath)
+    }
 
+    /** Individual photos and videos, several at once. */
+    private fun chooseImportFiles() {
+        val importer = server?.importer ?: return
+        if (importer.busy) return
+        val filters = listOf(
+            NativeFileDialog.Filter("Photos and videos", FolderImporter.MEDIA_PATTERNS),
+            NativeFileDialog.Filter("All files", listOf("*.*")),
+        )
+        val files = when (val r = NativeFileDialog.pickFiles(frame, "Choose photos and videos to copy into the library", "Import", null, filters)) {
+            is NativeFileDialog.Result.Picked -> r.files
+            NativeFileDialog.Result.Cancelled -> return
+            is NativeFileDialog.Result.Unavailable -> {
+                val chooser = JFileChooser().apply {
+                    dialogTitle = "Choose photos and videos to copy into the library"
+                    isMultiSelectionEnabled = true
+                    fileFilter = javax.swing.filechooser.FileNameExtensionFilter(
+                        "Photos and videos", *FolderImporter.MEDIA_PATTERNS.map { it.removePrefix("*.") }.toTypedArray(),
+                    )
+                }
+                if (chooser.showDialog(frame, "Import") != JFileChooser.APPROVE_OPTION) return
+                chooser.selectedFiles.toList()
+            }
+        }
+        if (files.isEmpty()) return
+        val label = if (files.size == 1) files[0].absolutePath else "${files.size} chosen files"
+        startImport(importer, files, label)
+    }
+
+    private fun startImport(importer: FolderImporter, sources: List<File>, label: String) {
         scope.launch {
             val found = try {
-                importer.discover(source)
+                importer.discover(sources)
             } catch (t: Throwable) {
                 SwingUtilities.invokeLater {
                     JOptionPane.showMessageDialog(frame, t.message ?: t.toString(), "Cannot import", JOptionPane.WARNING_MESSAGE)
                 }
                 return@launch
             }
-            SwingUtilities.invokeLater { confirmImport(importer, source, found) }
+            SwingUtilities.invokeLater { confirmImport(importer, label, found) }
         }
     }
 
-    private fun confirmImport(importer: FolderImporter, source: File, found: Discovery) {
+    /**
+     * The native Windows folder picker, or Swing's when the native one cannot be shown. Null when
+     * cancelled.
+     */
+    private fun pickFolder(title: String, okLabel: String, startIn: File?): File? =
+        when (val r = NativeFileDialog.pickFolder(frame, title, okLabel, startIn)) {
+            is NativeFileDialog.Result.Picked -> r.files.firstOrNull()
+            NativeFileDialog.Result.Cancelled -> null
+            is NativeFileDialog.Result.Unavailable -> {
+                val chooser = JFileChooser(startIn).apply {
+                    dialogTitle = title
+                    fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
+                    isAcceptAllFileFilterUsed = false
+                }
+                if (chooser.showDialog(frame, okLabel) == JFileChooser.APPROVE_OPTION) chooser.selectedFile else null
+            }
+        }
+
+    private fun confirmImport(importer: FolderImporter, label: String, found: Discovery) {
         if (found.files == 0) {
-            JOptionPane.showMessageDialog(frame, "No photos or videos were found in\n${source.absolutePath}")
+            JOptionPane.showMessageDialog(frame, "No photos or videos were found in\n$label")
             scope.launch { importer.discard(found.sessionId) }
             return
         }
@@ -211,7 +259,7 @@ class PairingWindow(
         val tight = found.freeBytes != null && found.bytes + FolderImporter.RESERVE_BYTES > found.freeBytes
         val message = buildString {
             append("<html>Found <b>${"%,d".format(found.files)}</b> photos and videos (<b>$size</b>) in<br>")
-            append("<b>${source.absolutePath}</b><br><br>")
+            append("<b>$label</b><br><br>")
             append("The library drive has <b>$free</b> free.<br>")
             if (tight) {
                 append("<font color='#b00020'>That may not be enough. Files already in the library are skipped, " +
@@ -280,14 +328,8 @@ class PairingWindow(
 
     private fun chooseLibrary() {
         val current = server?.status?.value?.libraryPath?.takeIf { it.isNotEmpty() }?.let(::File)
-        val chooser = JFileChooser(current?.parentFile).apply {
-            dialogTitle = "Choose the folder that holds this library"
-            fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-            isAcceptAllFileFilterUsed = false
-            current?.let { selectedFile = it }
-        }
-        if (chooser.showDialog(frame, "Use this folder") != JFileChooser.APPROVE_OPTION) return
-        val picked = chooser.selectedFile ?: return
+        val picked = pickFolder("Choose the folder that holds this library", "Use this folder", current?.parentFile)
+            ?: return
         if (current != null && picked.absoluteFile == current.absoluteFile) return
 
         val answer = JOptionPane.showConfirmDialog(

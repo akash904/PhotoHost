@@ -22,6 +22,8 @@ zxing = "3.5.4"
 metadataExtractor = "2.21.0"
 twelvemonkeys = "3.15.2"
 slf4j = "2.0.17"
+# Only for the native Windows file dialog (IFileOpenDialog). Resolved 2026-09-25.
+jna = "5.19.1"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -41,6 +43,7 @@ metadata-extractor = { module = "com.drewnoakes:metadata-extractor", version.ref
 twelvemonkeys-jpeg = { module = "com.twelvemonkeys.imageio:imageio-jpeg", version.ref = "twelvemonkeys" }
 twelvemonkeys-webp = { module = "com.twelvemonkeys.imageio:imageio-webp", version.ref = "twelvemonkeys" }
 slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
+jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

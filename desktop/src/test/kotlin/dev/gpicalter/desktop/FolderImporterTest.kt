@@ -129,6 +129,24 @@ class FolderImporterTest {
     }
 
     @Test
+    fun `imports photos picked one by one, mixed with a folder, each file once`() = runBlocking {
+        val im = importer()
+        val picked = listOf(
+            File(source, Fixtures.LANDSCAPE),
+            File(source, Fixtures.SCREENSHOT),
+            File(source, "notes.txt"),          // not a photo: ignored
+            File(source, "copies"),             // a folder: everything in it
+            File(source, "copies/portrait copy.jpg"), // also inside that folder: listed once
+        )
+        val found = im.discover(picked)
+        assertEquals(3, found.files, "landscape, screenshot and the copy of the portrait")
+        im.start(found.sessionId)
+        val done = awaitPhase(im, ImportStatus.Phase.DONE)
+        assertEquals(3, done.copied)
+        assertEquals(3, db.assets().count())
+    }
+
+    @Test
     fun `refuses to import the library into itself or a folder containing it`() = runBlocking {
         val im = importer()
         assertFailsWith<IllegalArgumentException> { im.discover(libraryDir) }

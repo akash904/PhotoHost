@@ -62,6 +62,10 @@ dependencies {
 
     implementation(libs.zxing.core)
 
+    // The real Windows file dialog. Swing's JFileChooser only imitates an XP-era one, and AWT's
+    // FileDialog cannot choose folders; IFileOpenDialog does both, and looks like every other app.
+    implementation(libs.jna.platform)
+
     // Ktor logs through SLF4J; without a binding it prints a warning and drops everything.
     implementation(libs.slf4j.simple)
 
