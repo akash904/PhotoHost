@@ -52,21 +52,62 @@ fun main(args: Array<String>) {
         return
     }
 
-    runWithWindow(config)
+    runWithWindow(config, minimized = "minimized" in opts)
 }
 
 /**
- * The normal way in: double-clicking PhotoHost.exe. The window comes up first and the server behind
- * it, so a server that fails to start still has somewhere to say why.
+ * The normal way in: double-clicking PhotoHost.exe, or a start at sign-in with `--minimized`. The
+ * window comes up first and the server behind it, so a server that fails to start still has
+ * somewhere to say why.
  */
-private fun runWithWindow(config: Config) {
+private fun runWithWindow(config: Config, minimized: Boolean) {
+    // Already running (most likely in the tray): bring that one forward instead of starting a second
+    // server that could only fail on the port.
+    val instance = SingleInstance(config.dataDir)
+    if (!instance.acquire()) {
+        if (!instance.signalRunning()) {
+            javax.swing.JOptionPane.showMessageDialog(
+                null,
+                "PhotoHost is already running but is not responding.\nClose it from the tray, or restart the PC.",
+                "PhotoHost", javax.swing.JOptionPane.WARNING_MESSAGE,
+            )
+        }
+        exitProcess(0)
+    }
+
     val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     var server = DesktopServer(config)
     val lock = Any()
+    var toldAboutTray = false
 
     lateinit var window: PairingWindow
+    lateinit var tray: Tray
+    val quit = {
+        synchronized(lock) { server.stop() }
+        tray.remove()
+        window.close()
+        instance.release()
+        exitProcess(0)
+    }
+    tray = Tray(
+        onOpen = { window.bringToFront() },
+        onOpenBrowser = { window.openInBrowser() },
+        onQuit = { quit() },
+    )
     window = PairingWindow(
         scope = uiScope,
+        onClose = {
+            if (tray.available) {
+                window.hide()
+                // Once per run: a window that disappears while its server carries on needs saying.
+                if (!toldAboutTray) {
+                    toldAboutTray = true
+                    tray.notify("PhotoHost is still running", "Your library is still available to your phones. Quit from this icon.")
+                }
+            } else {
+                quit()
+            }
+        },
         onChangeLibrary = { folder ->
             window.setBusy("Switching library...")
             uiScope.launch {
@@ -80,15 +121,30 @@ private fun runWithWindow(config: Config) {
                 server.start()
             }
         },
-        onQuit = {
-            synchronized(lock) { server.stop() }
-            window.close()
-            exitProcess(0)
-        },
+        onQuit = { quit() },
     )
-    javax.swing.SwingUtilities.invokeAndWait { window.show() }
+    val hasTray = tray.install()
+    instance.listen { window.bringToFront() }
+    Autostart.refreshIfEnabled()
+
+    // Hidden at sign-in only when there is a tray to find it in; otherwise it could not be reached.
+    javax.swing.SwingUtilities.invokeAndWait { window.show(startHidden = minimized && hasTray) }
     window.attach(server)
     runBlocking { server.start() }
+    // Follows whichever server is current, since a library switch replaces it.
+    uiScope.launch {
+        while (true) {
+            val s = server.status.value
+            tray.tooltip(
+                when {
+                    s.error != null -> "PhotoHost: not running"
+                    s.running -> "PhotoHost: serving ${s.assets} photos and videos"
+                    else -> "PhotoHost: starting"
+                },
+            )
+            kotlinx.coroutines.delay(5_000)
+        }
+    }
 }
 
 private fun parseArgs(args: Array<String>): Map<String, String> {

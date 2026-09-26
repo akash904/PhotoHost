@@ -44,6 +44,8 @@ class PairingWindow(
     private val scope: CoroutineScope,
     /** Called on the UI thread with the folder the user picked. */
     private val onChangeLibrary: (File) -> Unit,
+    /** The window's close button: hide to the tray, or quit when there is no tray. */
+    private val onClose: () -> Unit,
     private val onQuit: () -> Unit,
 ) {
     private val frame = JFrame("PhotoHost")
@@ -60,6 +62,19 @@ class PairingWindow(
     private var watching: Job? = null
     private var watchingImport: Job? = null
 
+    private val autostart = javax.swing.JCheckBox("Start PhotoHost when I sign in to Windows").apply {
+        if (Autostart.supported) {
+            isSelected = Autostart.isEnabled()
+            toolTipText = "Starts quietly in the tray, so the library is always available to your phones."
+            addActionListener {
+                if (!Autostart.setEnabled(isSelected)) isSelected = Autostart.isEnabled()
+            }
+        } else {
+            isEnabled = false
+            toolTipText = "Available when running the installed PhotoHost.exe"
+        }
+    }
+
     private val importLine = JLabel(" ")
     private val importCancel = JButton("Cancel import").apply { isVisible = false }
     private val importResume = JButton("Resume import").apply { isVisible = false }
@@ -68,7 +83,8 @@ class PairingWindow(
 
     private val buttons = mutableListOf<JButton>()
 
-    fun show() {
+    /** @param startHidden true for a start at sign-in: the server runs, the window stays in the tray. */
+    fun show(startHidden: Boolean = false) {
         runCatching { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()) }
 
         val copy = button("Copy link") {
@@ -76,13 +92,7 @@ class PairingWindow(
                 frame.toolkit.systemClipboard.setContents(StringSelection(it), null)
             }
         }
-        val browse = button("Open in browser") {
-            // The pairing link signs the browser in and lands on the web UI. Loopback, since this
-            // browser is on this PC; the certificate warning is expected for a self-signed server.
-            val s = server?.status?.value ?: return@button
-            val token = s.pairingLink?.let { Regex("[?&]c=([^&]+)").find(it)?.groupValues?.get(1) } ?: return@button
-            runCatching { Desktop.getDesktop().browse(URI("http://127.0.0.1:${s.port}/pair?c=$token")) }
-        }
+        val browse = button("Open in browser") { openInBrowser() }
         val rescan = button("Rescan library") {
             val s = server ?: return@button
             scope.launch(Dispatchers.IO) { s.enqueueScan(); s.refresh() }
@@ -129,7 +139,12 @@ class PairingWindow(
                 add(copy)
                 add(Box.createHorizontalStrut(8))
                 add(browse)
+                add(Box.createHorizontalStrut(8))
+                // Always enabled: quitting must work even while the server is failing to start.
+                add(JButton("Quit PhotoHost").apply { addActionListener { onQuit() } })
             })
+            add(Box.createVerticalStrut(6))
+            add(autostart)
             add(Box.createVerticalStrut(14))
             add(JLabel("<html><b>Add photos from this PC</b><br>Copies a whole folder, or photos and " +
                 "videos you pick, into the library. The originals are never changed.</html>"))
@@ -155,13 +170,32 @@ class PairingWindow(
         frame.contentPane.add(right, BorderLayout.CENTER)
         frame.defaultCloseOperation = WindowConstants.DO_NOTHING_ON_CLOSE
         frame.addWindowListener(object : java.awt.event.WindowAdapter() {
-            // Closing the window stops the server. Until the tray icon exists there is nowhere else
-            // for a running server to live, and a server nobody can see or stop is worse.
-            override fun windowClosing(e: java.awt.event.WindowEvent?) = onQuit()
+            override fun windowClosing(e: java.awt.event.WindowEvent?) = onClose()
         })
         frame.pack()
         frame.setLocationRelativeTo(null)
+        frame.isVisible = !startHidden
+    }
+
+    /** Shows the window and brings it in front of everything, e.g. from the tray or a second launch. */
+    fun bringToFront() = SwingUtilities.invokeLater {
         frame.isVisible = true
+        frame.extendedState = frame.extendedState and java.awt.Frame.ICONIFIED.inv()
+        // Windows refuses to steal focus for a background process; flipping always-on-top is the
+        // accepted way to get in front anyway.
+        frame.isAlwaysOnTop = true
+        frame.toFront()
+        frame.requestFocus()
+        frame.isAlwaysOnTop = false
+    }
+
+    fun hide() = SwingUtilities.invokeLater { frame.isVisible = false }
+
+    /** The web UI on this PC, signed in through the pairing link over loopback. */
+    fun openInBrowser() {
+        val s = server?.status?.value ?: return
+        val token = s.pairingLink?.let { Regex("[?&]c=([^&]+)").find(it)?.groupValues?.get(1) } ?: return
+        runCatching { Desktop.getDesktop().browse(URI("http://127.0.0.1:${s.port}/pair?c=$token")) }
     }
 
     /** Points the window at a (new) server instance, e.g. after the library folder changed. */
