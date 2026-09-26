@@ -129,7 +129,7 @@ fun PairingCode(payload: String?, modifier: Modifier = Modifier, qrSize: Int = 2
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(
-                "On the other phone: choose \"View photos kept on another phone\"",
+                "On the other phone: choose \"View photos kept on another phone or PC\"",
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
                 textAlign = TextAlign.Center,

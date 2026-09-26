@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,6 +25,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -97,8 +99,22 @@ fun SettingsScreen(
     var chargingOnly by remember { mutableStateOf(prefs.backupWhileChargingOnly) }
     var showFolders by remember { mutableStateOf(false) }
     var folderSummary by remember { mutableStateOf(summarise(prefs)) }
-    var remote by remember { mutableStateOf(prefs.serverUrl.orEmpty()) }
-    var remoteToken by remember { mutableStateOf(prefs.remoteToken.orEmpty()) }
+    // Libraries. Preferences do not emit, so this is re-read after every change made here.
+    var libraries by remember { mutableStateOf(prefs.libraries()) }
+    var activeId by remember { mutableStateOf(prefs.activeLibrary().id) }
+    var backupId by remember { mutableStateOf(prefs.backupLibrary()?.id) }
+    fun reloadLibraries() {
+        libraries = prefs.libraries()
+        activeId = prefs.activeLibrary().id
+        backupId = prefs.backupLibrary()?.id
+    }
+    var libraryActions by remember { mutableStateOf<dev.gpicalter.core.Library?>(null) }
+    var renaming by remember { mutableStateOf<dev.gpicalter.core.Library?>(null) }
+    var renameText by remember { mutableStateOf("") }
+    var removing by remember { mutableStateOf<dev.gpicalter.core.Library?>(null) }
+    var choosingBackup by remember { mutableStateOf(false) }
+    var addAddress by remember { mutableStateOf("") }
+    var addToken by remember { mutableStateOf("") }
     var remoteOn by remember { mutableStateOf(prefs.remoteAccess) }
     var showRouterTrace by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -135,6 +151,122 @@ fun SettingsScreen(
         if (!backupOn) return
         BackupScheduler.cancel(context)
         BackupScheduler.schedulePeriodic(context, wifiOnly, chargingOnly)
+    }
+
+    libraryActions?.let { lib ->
+        AlertDialog(
+            onDismissRequest = { libraryActions = null },
+            title = { Text(lib.name) },
+            text = {
+                Column {
+                    Text(lib.url ?: "Kept on this phone", style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(12.dp))
+                    if (lib.id != activeId) {
+                        TextButton(onClick = {
+                            prefs.activeLibraryId = lib.id
+                            libraryActions = null
+                            reloadLibraries()
+                            onEndpointChanged()
+                        }) { Text("Browse this library") }
+                    }
+                    if (lib.id != backupId) {
+                        TextButton(onClick = {
+                            prefs.backupLibraryId = lib.id
+                            libraryActions = null
+                            reloadLibraries()
+                        }) { Text("Back up this phone to it") }
+                    }
+                    if (!lib.isLocal) {
+                        TextButton(onClick = {
+                            renameText = lib.name
+                            renaming = lib
+                            libraryActions = null
+                        }) { Text("Rename") }
+                        TextButton(onClick = {
+                            removing = lib
+                            libraryActions = null
+                        }) { Text("Remove from this phone") }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { libraryActions = null }) { Text("Close") } },
+        )
+    }
+
+    renaming?.let { lib ->
+        AlertDialog(
+            onDismissRequest = { renaming = null },
+            title = { Text("Rename library") },
+            text = {
+                OutlinedTextField(value = renameText, onValueChange = { renameText = it }, singleLine = true)
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    prefs.renameLibrary(lib.id, renameText)
+                    renaming = null
+                    reloadLibraries()
+                    onEndpointChanged()
+                }) { Text("Rename") }
+            },
+            dismissButton = { TextButton(onClick = { renaming = null }) { Text("Cancel") } },
+        )
+    }
+
+    removing?.let { lib ->
+        AlertDialog(
+            onDismissRequest = { removing = null },
+            title = { Text("Remove ${lib.name}?") },
+            text = {
+                Text(
+                    "This phone forgets how to reach it. Nothing on that library is deleted, and you can " +
+                        "add it again by scanning its pairing code." +
+                        if (lib.id == backupId) "\n\nIt is where this phone backs up to, so backup stops until you choose another." else "",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    prefs.removeLibrary(lib.id)
+                    removing = null
+                    reloadLibraries()
+                    onEndpointChanged()
+                }) { Text("Remove") }
+            },
+            dismissButton = { TextButton(onClick = { removing = null }) { Text("Cancel") } },
+        )
+    }
+
+    if (choosingBackup) {
+        AlertDialog(
+            onDismissRequest = { choosingBackup = false },
+            title = { Text("Back up this phone to") },
+            text = {
+                Column {
+                    if (libraries.isEmpty()) {
+                        Text("No library yet. Scan a pairing code, or set this phone up to keep its own.")
+                    }
+                    libraries.forEach { lib ->
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    prefs.backupLibraryId = lib.id
+                                    choosingBackup = false
+                                    reloadLibraries()
+                                }
+                                .padding(vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(selected = lib.id == backupId, onClick = null)
+                            Column(Modifier.padding(start = 8.dp)) {
+                                Text(lib.name)
+                                Text(lib.url ?: "Kept on this phone", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { choosingBackup = false }) { Text("Close") } },
+        )
     }
 
     if (showFolders) {
@@ -175,7 +307,7 @@ fun SettingsScreen(
                 title = "Set up this phone",
                 subtitle = when (prefs.role) {
                     DeviceRole.HOST -> "Keeps the library here and serves it to other devices"
-                    DeviceRole.VIEWER -> "Views a library kept on another phone"
+                    DeviceRole.VIEWER -> "Views libraries kept on other phones or PCs"
                     DeviceRole.UNSET -> "Not chosen yet"
                 },
                 value = "›",
@@ -271,6 +403,14 @@ fun SettingsScreen(
             }
             RowDivider()
             SettingsRow(
+                title = "Back up to",
+                subtitle = libraries.firstOrNull { it.id == backupId }?.name
+                    ?: "Not chosen — backup will not run until you pick a library",
+                value = "›",
+                onClick = { choosingBackup = true },
+            )
+            RowDivider()
+            SettingsRow(
                 title = "Photo access",
                 subtitle = if (hasMedia) {
                     "Granted"
@@ -349,12 +489,35 @@ fun SettingsScreen(
             },
         )
 
-        // ---------------------------------------------------------------- library
-        SectionHeader("Library to browse")
+        // ---------------------------------------------------------------- libraries
+        // Several libraries are a legitimate arrangement -- recent photos on a phone, the archive on
+        // a PC -- and they are separate collections, not copies. This lists every one this phone can
+        // reach; the Library tab shows one at a time, and backup goes to the one chosen above.
+        SectionHeader("Libraries")
         SettingsCard {
+            if (libraries.isEmpty()) {
+                SettingsRow(title = "No libraries yet", subtitle = "Scan a pairing code to add one")
+                RowDivider()
+            }
+            libraries.forEach { lib ->
+                SettingsRow(
+                    title = lib.name,
+                    subtitle = buildString {
+                        append(lib.url ?: "Kept on this phone")
+                        val tags = buildList {
+                            if (lib.id == activeId) add("on screen")
+                            if (lib.id == backupId) add("backup goes here")
+                        }
+                        if (tags.isNotEmpty()) append(" · ").append(tags.joinToString(" · "))
+                    },
+                    value = "›",
+                    onClick = { libraryActions = lib },
+                )
+                RowDivider()
+            }
             SettingsRow(
-                title = "Scan a pairing code",
-                subtitle = "Point the camera at the QR shown on the phone serving the library",
+                title = "Add a library",
+                subtitle = "Scan the pairing code shown by a phone or PC serving one",
                 value = "›",
                 onClick = onScanPairingCode,
             )
@@ -379,55 +542,56 @@ fun SettingsScreen(
                     )
                 }
                 active?.let { MonoLine(it) }
-                // Only worth saying when the two differ, which is exactly when the address below
-                // would otherwise look like a lie.
-                if (active != null && remote.isNotBlank() && active != remote) {
+                // Only worth saying when the two differ, which is exactly when the address listed
+                // for the library would otherwise look like a lie.
+                val configured = libraries.firstOrNull { it.id == activeId }?.url
+                if (active != null && configured != null && active != configured) {
                     Text(
-                        text = "The address set below is not the one answering right now. The app " +
-                            "tries every address the server advertised and uses the first that " +
-                            "replies, so this changes on its own when a VPN or Wi-Fi comes and goes.",
+                        text = "Not the address the library was paired at. The app tries every " +
+                            "address the server advertised and uses the first that replies, so " +
+                            "this changes on its own when a VPN or Wi-Fi comes and goes.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
             RowDivider()
-            SettingsRow(
-                title = if (remote.isBlank()) "This phone" else "Paired with",
-                subtitle = if (remote.isBlank()) {
-                    "Browsing the library served here, over loopback"
-                } else {
-                    remote
-                },
-            )
-            RowDivider()
+            // By hand, for when the camera cannot be used. No certificate pin travels this way, so it
+            // is plain HTTP and meant for a LAN; the pairing code is the secure route.
             Column(Modifier.padding(horizontal = 20.dp, vertical = 14.dp)) {
+                Text("Add by address", style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
-                    value = remote,
-                    onValueChange = { remote = it },
+                    value = addAddress,
+                    onValueChange = { addAddress = it },
                     label = { Text("Server address") },
-                    placeholder = { Text("blank = this phone") },
+                    placeholder = { Text("http://192.168.1.10:8080") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
-                    value = remoteToken,
-                    onValueChange = { remoteToken = it },
+                    value = addToken,
+                    onValueChange = { addToken = it },
                     label = { Text("Its access token") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(12.dp))
                 Button(
+                    enabled = addAddress.isNotBlank() && addToken.isNotBlank(),
                     onClick = {
-                        prefs.serverUrl = remote.ifBlank { null }
-                        prefs.remoteToken = remoteToken.ifBlank { null }
+                        val lib = prefs.addOrUpdateLibrary(addAddress.trim(), addToken.trim(), null, emptyList())
+                        prefs.activeLibraryId = lib.id
+                        if (prefs.backupLibrary() == null) prefs.backupLibraryId = lib.id
+                        addAddress = ""
+                        addToken = ""
+                        reloadLibraries()
                         onEndpointChanged()
                     },
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Apply") }
+                ) { Text("Add library") }
             }
         }
 

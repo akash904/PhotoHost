@@ -3,6 +3,7 @@ package dev.gpicalter.core
 import android.content.Context
 import android.net.Uri
 import android.util.Base64
+import kotlinx.serialization.json.Json
 import java.security.SecureRandom
 
 /**
@@ -62,45 +63,169 @@ class Prefs(context: Context) {
         get() = p.getBoolean(KEY_WAS_RUNNING, false)
         set(v) = p.edit().putBoolean(KEY_WAS_RUNNING, v).apply()
 
-    /**
-     * Which library this app browses.
-     *
-     * Null means "this phone" and resolves to loopback, so the viewer speaks the same HTTP API it
-     * would to a remote server. One browsing code path, and the server phone becomes its own
-     * integration test.
-     */
-    var serverUrl: String?
-        get() = p.getString(KEY_SERVER_URL, null)
-        set(v) = p.edit().putString(KEY_SERVER_URL, v?.trimEnd('/')).apply()
+    // ---------------------------------------------------------------- libraries
+
+    private val json = Json { ignoreUnknownKeys = true }
 
     /**
-     * Every address the paired server said it answers on, in preference order.
+     * The libraries this phone has been paired with, not counting its own.
      *
-     * Stored as an ordered list rather than a set because order is the whole point: try the LAN
-     * address before the Tailscale one, so being at home does not route photos through a VPN hop
-     * for no reason.
+     * Written with commit() rather than apply(): the backup worker and the foreground service read
+     * these from other threads, possibly the moment a pairing finishes, and a list still sitting in
+     * apply()'s write-behind queue is a list they cannot see.
      */
-    var serverCandidates: List<String>
-        get() = p.getString(KEY_CANDIDATES, "").orEmpty()
-            .split('\n')
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-        set(v) = p.edit().putString(KEY_CANDIDATES, v.joinToString("\n")).apply()
+    fun remoteLibraries(): List<LibraryProfile> =
+        p.getString(KEY_LIBRARIES, null)
+            ?.let { raw -> runCatching { json.decodeFromString<List<LibraryProfile>>(raw) }.getOrNull() }
+            .orEmpty()
+
+    private fun saveRemote(list: List<LibraryProfile>) {
+        p.edit().putString(KEY_LIBRARIES, json.encodeToString(list)).commit()
+    }
+
+    /** Whether this phone keeps a library of its own, which then appears as "This phone". */
+    fun hostsLibrary(): Boolean = role == DeviceRole.HOST
+
+    fun localLibrary(): Library = Library(Library.LOCAL_ID, "This phone", null, token(), null, emptyList())
+
+    /** Every library the switcher offers: this phone's first when it has one, then paired ones. */
+    fun libraries(): List<Library> = buildList {
+        if (hostsLibrary()) add(localLibrary())
+        remoteLibraries().forEach { add(it.toLibrary()) }
+    }
+
+    /** The library on screen. */
+    var activeLibraryId: String
+        get() = p.getString(KEY_ACTIVE_LIBRARY, Library.LOCAL_ID) ?: Library.LOCAL_ID
+        set(v) {
+            p.edit().putString(KEY_ACTIVE_LIBRARY, v).commit()
+        }
 
     /**
-     * SHA-256 of the server's TLS certificate, learned from the pairing QR.
-     *
-     * Present means "trust this one certificate and nothing else". Absent means plain HTTP on a
-     * trusted LAN, where there is no certificate to pin.
+     * Where this phone's camera roll is backed up to. Deliberately separate from [activeLibraryId]:
+     * looking at the archive on the PC must not quietly redirect the phone's backup there, and
+     * backing up to the PC must not stop you browsing the phone's own library.
      */
-    var serverFingerprint: String?
-        get() = p.getString(KEY_FINGERPRINT, null)
-        set(v) = p.edit().putString(KEY_FINGERPRINT, v?.lowercase()).apply()
+    var backupLibraryId: String?
+        get() = p.getString(KEY_BACKUP_LIBRARY, null)
+        set(v) {
+            p.edit().putString(KEY_BACKUP_LIBRARY, v).commit()
+        }
 
-    /** Token for a remote server. The local server uses [token] instead. */
-    var remoteToken: String?
-        get() = p.getString(KEY_REMOTE_TOKEN, null)
-        set(v) = p.edit().putString(KEY_REMOTE_TOKEN, v).apply()
+    fun activeLibrary(): Library =
+        resolve(activeLibraryId)
+            ?: remoteLibraries().firstOrNull()?.toLibrary()
+            ?: localLibrary()
+
+    /** Null when no backup target is set, or the one set has been removed. */
+    fun backupLibrary(): Library? = backupLibraryId?.let(::resolve)
+
+    fun library(id: String): Library? = resolve(id)
+
+    private fun resolve(id: String): Library? =
+        if (id == Library.LOCAL_ID) localLibrary() else remoteLibraries().firstOrNull { it.id == id }?.toLibrary()
+
+    private fun LibraryProfile.toLibrary() = Library(id, name, url, token, fingerprint, candidates)
+
+    /**
+     * Records a pairing and returns the library it belongs to.
+     *
+     * Scanning the same library again -- recognised by its certificate, or by its address when it
+     * has none -- updates that entry instead of adding a second one, so re-pairing after a token or
+     * address change keeps the library's name and its place as the backup target.
+     */
+    fun addOrUpdateLibrary(url: String, token: String, fingerprint: String?, candidates: List<String>): LibraryProfile {
+        val clean = url.trimEnd('/')
+        val pin = fingerprint?.lowercase()
+        val list = remoteLibraries().toMutableList()
+        val i = list.indexOfFirst { (pin != null && it.fingerprint == pin) || it.url == clean }
+        val profile = if (i >= 0) {
+            list[i].copy(url = clean, token = token, fingerprint = pin, candidates = candidates).also { list[i] = it }
+        } else {
+            LibraryProfile(
+                id = java.util.UUID.randomUUID().toString(),
+                name = defaultName(clean),
+                url = clean,
+                token = token,
+                fingerprint = pin,
+                candidates = candidates,
+                addedAt = System.currentTimeMillis(),
+            ).also { list += it }
+        }
+        saveRemote(list)
+        return profile
+    }
+
+    fun renameLibrary(id: String, name: String) {
+        if (name.isBlank()) return
+        saveRemote(remoteLibraries().map { if (it.id == id) it.copy(name = name.trim()) else it })
+    }
+
+    /**
+     * Forgets a paired library. Nothing on the server is touched: this phone just stops knowing the
+     * way there. If it was on screen, the next one takes its place; if it was the backup target,
+     * backup stops rather than silently switching to some other library.
+     */
+    fun removeLibrary(id: String) {
+        if (id == Library.LOCAL_ID) return
+        saveRemote(remoteLibraries().filterNot { it.id == id })
+        if (activeLibraryId == id) activeLibraryId = libraries().firstOrNull()?.id ?: Library.LOCAL_ID
+        if (backupLibraryId == id) backupLibraryId = null
+    }
+
+    /** What the server says its other addresses are, for the library that said it. */
+    fun updateCandidates(id: String, urls: List<String>) {
+        if (id == Library.LOCAL_ID) return
+        saveRemote(remoteLibraries().map { if (it.id == id) it.copy(candidates = urls) else it })
+    }
+
+    /** "Library at 192.168.1.20" until the server says what it is, or the user names it. */
+    fun defaultName(url: String): String =
+        "Library at " + runCatching { java.net.URI(url).host }.getOrNull().orEmpty().trim('[', ']').ifEmpty { url }
+
+    /**
+     * Moves the single library an older install knew about into the list, once.
+     *
+     * Before there was a list there was one set of keys: an address, its candidates, a pin and a
+     * token. Those become the first paired library, on screen and as the backup target -- exactly
+     * where the app was pointing -- so upgrading changes nothing anyone can see. The old keys are
+     * left in place and unused, so installing the previous build again still finds its settings.
+     */
+    fun migrateLibrariesIfNeeded() {
+        if (p.contains(KEY_LIBRARIES)) return
+        val legacyUrl = p.getString(KEY_SERVER_URL, null)?.trimEnd('/')
+        if (legacyUrl == null) {
+            saveRemote(emptyList())
+            activeLibraryId = Library.LOCAL_ID
+            // Backup used to go to whatever was browsed: with no server set, this phone's own.
+            backupLibraryId = Library.LOCAL_ID
+            return
+        }
+        val profile = LibraryProfile(
+            id = java.util.UUID.randomUUID().toString(),
+            name = defaultName(legacyUrl),
+            url = legacyUrl,
+            token = p.getString(KEY_REMOTE_TOKEN, null).orEmpty(),
+            fingerprint = p.getString(KEY_FINGERPRINT, null)?.lowercase(),
+            candidates = p.getString(KEY_CANDIDATES, "").orEmpty().split('\n').map { it.trim() }.filter { it.isNotEmpty() },
+            addedAt = System.currentTimeMillis(),
+        )
+        saveRemote(listOf(profile))
+        activeLibraryId = profile.id
+        backupLibraryId = profile.id
+    }
+
+    // Views of the active library, kept so the many readers written before there was a list still
+    // read what they meant: "the library on screen".
+
+    /** The active library's address; null means this phone, over loopback. */
+    val serverUrl: String? get() = activeLibrary().url
+
+    /** Every address the active library advertised, in preference order (LAN before Tailscale). */
+    val serverCandidates: List<String> get() = activeLibrary().candidates
+
+    /** The active library's certificate pin. Present means "trust this certificate and nothing else". */
+    val serverFingerprint: String? get() = activeLibrary().fingerprint
 
     /** Whether this phone uploads its own camera roll to the configured library. */
     var backupEnabled: Boolean
@@ -200,13 +325,13 @@ class Prefs(context: Context) {
         get() = p.getBoolean(KEY_DATE_REPAIR, false)
         set(v) = p.edit().putBoolean(KEY_DATE_REPAIR, v).apply()
 
-    /** Base URL of whatever library this app is pointed at. */
-    fun baseUrl(): String = serverUrl ?: "http://127.0.0.1:$port"
+    /** Base URL of the library on screen. */
+    fun baseUrl(): String = activeLibrary().baseUrl(port)
 
     /** The credential for [baseUrl]. */
-    fun activeToken(): String = if (serverUrl == null) token() else remoteToken.orEmpty()
+    fun activeToken(): String = activeLibrary().token
 
-    val isLocalLibrary: Boolean get() = serverUrl == null
+    val isLocalLibrary: Boolean get() = activeLibrary().isLocal
 
     /**
      * The access token, generated once and reused so pairing survives restarts.
@@ -248,5 +373,8 @@ class Prefs(context: Context) {
         const val KEY_ONBOARDED = "onboarded"
         const val KEY_ROLE = "deviceRole"
         const val KEY_REMOTE_ACCESS = "remoteAccess"
+        const val KEY_LIBRARIES = "libraries"
+        const val KEY_ACTIVE_LIBRARY = "activeLibrary"
+        const val KEY_BACKUP_LIBRARY = "backupLibrary"
     }
 }

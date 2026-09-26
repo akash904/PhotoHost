@@ -30,6 +30,9 @@ class AppContainer private constructor(context: Context) {
     private val app = context.applicationContext
 
     val prefs = Prefs(app).apply {
+        // Libraries first: the role migration reads "is a server address set", which after an
+        // upgrade only answers correctly once the old single address has become a library.
+        migrateLibrariesIfNeeded()
         // Before anything else touches preferences, and in particular before the first-run dialog
         // sets `onboarded`, which this reads to tell an existing install apart from a new one.
         migrateRoleIfUnrecorded()
@@ -37,8 +40,17 @@ class AppContainer private constructor(context: Context) {
     val dispatchers = AppDispatchers()
     val db = AppDatabase.get(app)
 
-    /** How this app reads a library -- loopback when serving locally, a URL when remote. */
-    val api: LibraryApi by lazy { LibraryApi(prefs) { http } }
+    /** The library on screen -- loopback for this phone's own, a URL for a paired one. */
+    val api: LibraryApi by lazy { LibraryApi(prefs, { prefs.activeLibrary() }) { httpFor(it) } }
+
+    /**
+     * The backup target, which is not necessarily the library on screen. A separate client, so
+     * switching what you browse mid-backup cannot send the rest of the upload somewhere else.
+     * The fallback only keeps this non-null; the backup worker refuses to run without a target.
+     */
+    val backupApi: LibraryApi by lazy {
+        LibraryApi(prefs, { prefs.backupLibrary() ?: prefs.activeLibrary() }) { httpFor(it) }
+    }
 
     /**
      * Shared so the service's renewal loop and the Settings buttons act on one object. Two
@@ -62,30 +74,39 @@ class AppContainer private constructor(context: Context) {
      *
      * Rebuilt whenever the pin changes, since pairing with a different server changes what to trust.
      */
-    @Volatile
-    private var httpCache: Pair<String?, OkHttpClient>? = null
+    private val httpCache = java.util.concurrent.ConcurrentHashMap<String, OkHttpClient>()
 
-    val http: OkHttpClient
-        get() {
-            val pin = prefs.serverFingerprint
-            httpCache?.let { (cachedPin, client) -> if (cachedPin == pin) return client }
-            val built = Pinning.clientFor(
+    /**
+     * The stack for one library: trusting only its certificate, presenting only its token.
+     *
+     * One per library rather than one shared, because the browsing and backup clients can be talking
+     * to different libraries at the same moment, and a shared interceptor would stamp one library's
+     * token onto requests meant for the other. The token is looked up per request, by the library's
+     * id, so regenerating this phone's own token takes effect without rebuilding anything.
+     */
+    fun httpFor(lib: dev.gpicalter.core.Library): OkHttpClient =
+        httpCache.getOrPut("${lib.id}|${lib.fingerprint}") {
+            val id = lib.id
+            Pinning.clientFor(
                 OkHttpClient.Builder().addInterceptor { chain ->
+                    val token = prefs.library(id)?.token ?: lib.token
                     chain.proceed(
                         chain.request().newBuilder()
-                            .header("Authorization", api.authHeader())
+                            .header("Authorization", "Bearer $token")
                             .build(),
                     )
                 },
-                pin,
+                lib.fingerprint,
             )
-            httpCache = pin to built
-            return built
         }
 
-    /** Drops the cached stack so the next request picks up a new pin. */
+    /** The stack for the library on screen: what Coil and ExoPlayer load through. */
+    val http: OkHttpClient
+        get() = httpFor(prefs.activeLibrary())
+
+    /** Drops cached stacks so the next request picks up a new pin. */
     fun invalidateHttp() {
-        httpCache = null
+        httpCache.clear()
     }
 
     val imageLoader: ImageLoader by lazy {

@@ -1,5 +1,6 @@
 package dev.gpicalter.net
 
+import dev.gpicalter.core.Library
 import dev.gpicalter.core.Prefs
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,8 +36,14 @@ import kotlinx.serialization.json.Json
  */
 class LibraryApi(
     private val prefs: Prefs,
-    /** Supplied lazily because the pinned stack is built from prefs this class also reads. */
-    private val httpStack: () -> okhttp3.OkHttpClient,
+    /**
+     * Which library this client talks to, read on every use. The browsing client follows the library
+     * on screen; the backup client follows the backup target. Two instances, so switching what you
+     * look at can never redirect an upload in flight.
+     */
+    private val target: () -> Library,
+    /** The HTTP stack for a library: its certificate pin and its token. */
+    private val httpStack: (Library) -> okhttp3.OkHttpClient,
 ) {
 
     private val json = Json {
@@ -53,14 +60,19 @@ class LibraryApi(
      * failed with "trust anchor not found" even though the fingerprint had been stored correctly.
      */
     @Volatile
-    private var cached: Pair<String?, HttpClient>? = null
+    private var cached: Pair<String, HttpClient>? = null
 
+    /**
+     * Rebuilt whenever the library or its pin changes -- a different library has a different
+     * certificate to trust and a different token to present.
+     */
     val client: HttpClient
         get() {
-            val pin = prefs.serverFingerprint
-            cached?.let { (cachedPin, existing) -> if (cachedPin == pin) return existing }
+            val lib = target()
+            val key = "${lib.id}|${lib.fingerprint}"
+            cached?.let { (cachedKey, existing) -> if (cachedKey == key) return existing }
             val fresh = HttpClient(OkHttp) {
-                engine { preconfigured = httpStack() }
+                engine { preconfigured = httpStack(lib) }
                 expectSuccess = false
                 install(ContentNegotiation) { json(json) }
                 install(HttpTimeout) {
@@ -73,9 +85,28 @@ class LibraryApi(
             // The old client owns a connection pool and threads; dropping it without closing
             // leaks both every time the user re-pairs.
             cached?.second?.let { old -> runCatching { old.close() } }
-            cached = pin to fresh
+            cached = key to fresh
             return fresh
         }
+
+    /** The library the cached address below belongs to. */
+    @Volatile
+    private var boundId: String? = null
+
+    /**
+     * Drops what was learned about the previous library when the target changes. The address that
+     * answered for the phone library is meaningless for the PC one, and keeping it would send the
+     * first requests after a switch to the wrong server.
+     */
+    private fun followTarget(): Library {
+        val lib = target()
+        if (lib.id != boundId) {
+            boundId = lib.id
+            activeBase = null
+            failedSweeps = 0
+        }
+        return lib
+    }
 
     /**
      * The address currently known to work.
@@ -118,7 +149,10 @@ class LibraryApi(
     var lastError: String? = null
         private set
 
-    fun baseUrl(): String = activeBase ?: prefs.baseUrl()
+    fun baseUrl(): String {
+        val lib = followTarget()
+        return activeBase ?: lib.baseUrl(prefs.port)
+    }
 
     /**
      * Picks the first candidate that answers.
@@ -134,12 +168,13 @@ class LibraryApi(
      * unreachable first candidate is therefore one short timeout, not a hang.
      */
     suspend fun resolveEndpoint(): String {
+        val lib = followTarget()
         activeBase?.let { return it }
         val candidates = buildList {
-            prefs.serverUrl?.let { add(it) }
-            addAll(prefs.serverCandidates)
+            lib.url?.let { add(it) }
+            addAll(lib.candidates)
         }.distinct()
-        if (candidates.isEmpty()) return prefs.baseUrl()
+        if (candidates.isEmpty()) return lib.baseUrl(prefs.port)
 
         val quietFor = backoffMillis()
         if (failedSweeps > 0 && System.currentTimeMillis() - lastFailedSweepAt < quietFor) {
@@ -257,7 +292,7 @@ class LibraryApi(
         }
         val urls = found.endpoints.map { it.url }.filterNot { it.contains("127.0.0.1") }
         if (urls.isNotEmpty()) {
-            prefs.serverCandidates = urls
+            prefs.updateCandidates(target().id, urls)
             android.util.Log.i("gpic", "learned ${urls.size} candidate addresses")
         }
     }
@@ -268,7 +303,10 @@ class LibraryApi(
     fun originalUrl(assetId: Long): String = "${baseUrl()}/api/v1/assets/$assetId/original"
 
     /** Coil and ExoPlayer both need this, since thumbnails and originals are authenticated too. */
-    fun authHeader(): String = "Bearer ${prefs.activeToken()}"
+    fun authHeader(): String = "Bearer ${target().token}"
+
+    /** The library this client is talking to right now. */
+    fun library(): Library = target()
 
     suspend fun health(): HealthDto? = getOrNull("/health")
 

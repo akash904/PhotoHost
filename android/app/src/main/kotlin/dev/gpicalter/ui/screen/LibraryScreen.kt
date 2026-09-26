@@ -75,6 +75,8 @@ fun LibraryScreen(
     vm: LibraryViewModel = viewModel(),
     onSetUp: () -> Unit = {},
     onOpenBackup: () -> Unit = {},
+    onAddLibrary: () -> Unit = {},
+    onManageLibraries: () -> Unit = {},
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
@@ -118,6 +120,15 @@ fun LibraryScreen(
     }
 
     Column(Modifier.fillMaxSize()) {
+    if (state.selected.isEmpty() && state.libraries.isNotEmpty()) {
+        LibrarySwitcher(
+            libraries = state.libraries,
+            activeId = state.activeLibraryId,
+            onSwitch = { vm.switchTo(it) },
+            onAdd = onAddLibrary,
+            onManage = onManageLibraries,
+        )
+    }
     if (state.selected.isNotEmpty()) {
         Row(
             Modifier
@@ -191,7 +202,7 @@ fun LibraryScreen(
                         Text("Not set up yet", style = MaterialTheme.typography.titleMedium)
                         Text(
                             "This phone has not been told whether it keeps your photos or views " +
-                                "another phone's library.",
+                                "a library on another phone or PC.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
@@ -347,6 +358,79 @@ private fun PhotoRow(
 }
 
 @OptIn(ExperimentalFoundationApi::class)
+/**
+ * Which library is on screen, and the way to the others.
+ *
+ * Libraries are separate collections, not views of one, so the name is always shown -- a grid of
+ * photos with no word on whose they are is exactly how someone deletes from the wrong library.
+ */
+@Composable
+private fun LibrarySwitcher(
+    libraries: List<dev.gpicalter.core.Library>,
+    activeId: String,
+    onSwitch: (String) -> Unit,
+    onAdd: () -> Unit,
+    onManage: () -> Unit,
+) {
+    var open by remember { mutableStateOf(false) }
+    val active = libraries.firstOrNull { it.id == activeId } ?: libraries.first()
+    Box {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable { open = true }
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                active.name,
+                Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(if (libraries.size > 1) "Switch ▾" else "▾", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp)
+        }
+        androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            libraries.forEach { lib ->
+                androidx.compose.material3.DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(lib.name, fontWeight = if (lib.id == active.id) FontWeight.SemiBold else FontWeight.Normal)
+                            Text(
+                                lib.url ?: "Kept on this phone",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    },
+                    leadingIcon = { Text(if (lib.id == active.id) "●" else "○") },
+                    onClick = {
+                        open = false
+                        onSwitch(lib.id)
+                    },
+                )
+            }
+            androidx.compose.material3.HorizontalDivider()
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text("Add a library…") },
+                onClick = {
+                    open = false
+                    onAdd()
+                },
+            )
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text("Manage libraries…") },
+                onClick = {
+                    open = false
+                    onManage()
+                },
+            )
+        }
+    }
+}
+
 @Composable
 private fun Tile(
     cell: Cell,

@@ -197,7 +197,7 @@ fun SetupScreen(
             Spacer(Modifier.height(16.dp))
 
             ChoiceCard(
-                title = "View photos kept on another phone",
+                title = "View photos kept on another phone or PC",
                 body = "Scan the pairing code shown by the phone that holds the library. " +
                     "Choose this on a phone you only want to browse from.",
             ) {

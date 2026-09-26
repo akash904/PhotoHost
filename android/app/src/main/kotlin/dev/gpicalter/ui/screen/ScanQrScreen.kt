@@ -98,7 +98,7 @@ fun parsePairing(raw: String?): PairingInfo? {
  * someone self-hosting is likely to be using.
  */
 @Composable
-fun ScanQrScreen(prefs: Prefs, onPaired: (String) -> Unit, onClose: () -> Unit) {
+fun ScanQrScreen(prefs: Prefs, onPaired: (dev.gpicalter.core.LibraryProfile) -> Unit, onClose: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var granted by remember {
@@ -151,19 +151,20 @@ fun ScanQrScreen(prefs: Prefs, onPaired: (String) -> Unit, onClose: () -> Unit) 
                                             return@processFrame
                                         }
                                         handled = true
-                                        prefs.serverUrl = info.baseUrl
-                                        prefs.remoteToken = info.token
-                                        prefs.serverFingerprint = info.fingerprint
-                                        // Replaced, not merely cleared. Candidates from a previous
-                                        // server would be probed and could silently win, pointing
-                                        // the app at the old library -- but clearing them and
-                                        // storing nothing leaves this client knowing only the
-                                        // address in the code, which is useless if the scanning
-                                        // phone cannot reach that one.
-                                        prefs.serverCandidates = info.alternates
+                                        // Added to the list of libraries, or updated if this one is
+                                        // already there -- never written over whichever library was
+                                        // paired before. The alternates travel with it, so this
+                                        // library's addresses can never be probed for another's.
+                                        val library = prefs.addOrUpdateLibrary(
+                                            url = info.baseUrl,
+                                            token = info.token,
+                                            fingerprint = info.fingerprint,
+                                            candidates = info.alternates,
+                                        )
+                                        prefs.activeLibraryId = library.id
                                         status = "Paired with ${info.baseUrl}"
                                         provider.unbindAll()
-                                        onPaired(info.baseUrl)
+                                        onPaired(library)
                                     }
                                 }
                                 provider.unbindAll()
@@ -241,7 +242,7 @@ fun ScanQrScreen(prefs: Prefs, onPaired: (String) -> Unit, onClose: () -> Unit) 
                     )
                 } else {
                     Text(
-                        text = status ?: "Point at the QR on the phone serving the library",
+                        text = status ?: "Point at the QR on the phone or PC serving the library",
                         color = Color.White,
                         textAlign = TextAlign.Center,
                     )

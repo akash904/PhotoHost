@@ -49,6 +49,13 @@ class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker
         val manual = inputData.getBoolean(KEY_MANUAL, false)
         if (!manual && !container.prefs.backupEnabled) return Result.success()
 
+        // No target, or the one chosen has been removed: stop and say so, rather than uploading to
+        // whichever library happens to be on screen, which the user never chose for this.
+        if (container.prefs.backupLibrary() == null) {
+            BackupState.update { it.copy(running = false, lastError = "Choose a library to back up to in Settings") }
+            return Result.success()
+        }
+
         // Uploading a camera roll is long and visible work, so it runs in the foreground rather
         // than risking a mid-transfer kill.
         runCatching { setForeground(foregroundInfo("Backing up…")) }
@@ -60,7 +67,8 @@ class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker
             .toSet()
             .ifEmpty { null }
 
-        val engine = BackupEngine(applicationContext, container.db, container.api, container.prefs)
+        // The backup target, not the library on screen: see AppContainer.backupApi.
+        val engine = BackupEngine(applicationContext, container.db, container.backupApi, container.prefs)
         val outcome = engine.run(onlyIds = manualIds)
         if (manualIds != null) container.prefs.pendingManualIds = emptySet()
 

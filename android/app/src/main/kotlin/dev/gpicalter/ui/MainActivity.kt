@@ -213,6 +213,8 @@ private fun GpicApp() {
                         vm = libraryVm,
                         onSetUp = { setupRequested = true },
                         onOpenBackup = { tab = Tab.SETTINGS },
+                        onAddLibrary = { scanningQr = true },
+                        onManageLibraries = { tab = Tab.SETTINGS },
                     )
                 }
                 Tab.SERVER -> androidx.compose.foundation.layout.Box(Modifier.padding(padding)) {
@@ -221,13 +223,16 @@ private fun GpicApp() {
                 Tab.SETTINGS -> androidx.compose.foundation.layout.Box(Modifier.padding(padding)) {
                     SettingsScreen(
                         onEndpointChanged = {
-                            // Typing an address in, or clearing it, is as much a statement of what
-                            // this phone is as scanning a code or starting the server. Recorded
-                            // before the refresh for the same reason as the pairing path above:
-                            // refresh() reads the role and gives up while it is unset.
-                            container.prefs.role =
-                                if (container.prefs.serverUrl != null) DeviceRole.VIEWER
-                                else DeviceRole.HOST
+                            // A library added, removed, renamed or switched to. Adding one by hand
+                            // answers "what is this phone" the way scanning a code does, and only
+                            // for a phone that had not answered yet. Recorded before the refresh for
+                            // the same reason as the pairing path below.
+                            val prefs = container.prefs
+                            if (prefs.role == DeviceRole.UNSET && prefs.remoteLibraries().isNotEmpty()) {
+                                prefs.role = DeviceRole.VIEWER
+                            }
+                            container.invalidateHttp()
+                            libraryVm.api.invalidateEndpoint()
                             libraryVm.refresh()
                             setupKey++
                         },
@@ -311,21 +316,35 @@ private fun GpicApp() {
                     // request goes out, or the old trust settings would reject the new server.
                     container.invalidateHttp()
                     libraryVm.api.invalidateEndpoint()
-                    // This phone now points at someone else's library, so it is no longer waiting
-                    // to be told what it is, and the bar reorders to put that library first.
+                    // Pairing adds a library; it does not change what this phone is. A phone that
+                    // keeps a library of its own goes on keeping it -- it used to be demoted to
+                    // "viewer" here, which hid its own library behind the one just paired. Only a
+                    // phone that had not decided becomes a viewer.
                     //
                     // Recorded BEFORE the refresh, and the order is load-bearing: refresh() reads
                     // the role and does nothing at all while it is still unset, so refreshing first
                     // left a freshly paired phone showing "not set up yet" over a library it had
                     // just successfully connected to.
-                    container.prefs.role = DeviceRole.VIEWER
+                    if (container.prefs.role == DeviceRole.UNSET) container.prefs.role = DeviceRole.VIEWER
+                    // The first library this phone can actually back up to becomes the target.
+                    // An existing, working choice is never changed by pairing something else.
+                    val prefs = container.prefs
+                    val target = prefs.backupLibrary()
+                    if (target == null || (target.isLocal && !prefs.hostsLibrary())) {
+                        prefs.backupLibraryId = paired.id
+                    }
                     libraryVm.refresh()
                     setupKey++
                     setupRequested = false
                     tab = Tab.LIBRARY
-                    // Explicit confirmation: the previous version simply closed the camera, which
-                    // is indistinguishable from the scan having failed.
-                    scope.launch { snackbar.showSnackbar("Connected to $paired") }
+                    scope.launch {
+                        // Named by what it is -- a PC or a phone -- rather than by an address, unless
+                        // the user has already renamed it.
+                        val name = libraryVm.nameFromServer(paired)
+                        // Explicit confirmation: the previous version simply closed the camera,
+                        // which is indistinguishable from the scan having failed.
+                        snackbar.showSnackbar("Connected to $name")
+                    }
                 },
                 onClose = { scanningQr = false },
             )

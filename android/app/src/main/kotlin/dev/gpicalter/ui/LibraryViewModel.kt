@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.gpicalter.core.DeviceRole
+import dev.gpicalter.core.Library
+import dev.gpicalter.core.LibraryProfile
 import dev.gpicalter.di.AppContainer
 import dev.gpicalter.net.BucketDto
 import dev.gpicalter.net.TimelineItemDto
@@ -50,6 +52,9 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
          * hour of debugging a server that was simply still working.
          */
         val preparing: Int = 0,
+        /** Every library the switcher offers, and which one is on screen. */
+        val libraries: List<Library> = emptyList(),
+        val activeLibraryId: String = Library.LOCAL_ID,
     )
 
     // Mutated only through MutableStateFlow.update, never by read-then-assign. Several coroutines
@@ -127,7 +132,48 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Puts another library on screen.
+     *
+     * The HTTP stacks and the learned address belong to the library they were built for, so both are
+     * dropped, and the grid is emptied at once: showing the previous library's photos under the new
+     * library's name, even for a moment, would be a lie about what is where.
+     */
+    fun switchTo(id: String) {
+        if (id == container.prefs.activeLibraryId) return
+        container.prefs.activeLibraryId = id
+        container.invalidateHttp()
+        api.invalidateEndpoint()
+        _state.update { it.copy(items = emptyList(), buckets = emptyList(), selected = emptySet()) }
+        refresh()
+    }
+
+    /**
+     * Names a newly paired library after what it is -- "PC library (192.168.1.20)" or "Phone
+     * library (...)" -- from the backend its /health reports. Left alone if the user has renamed it
+     * already. Returns the name it ends up with.
+     */
+    suspend fun nameFromServer(profile: LibraryProfile): String {
+        val prefs = container.prefs
+        val current = prefs.library(profile.id)?.name ?: profile.name
+        if (current != prefs.defaultName(profile.url)) return current
+        val health = api.health() ?: return current
+        val kind = when (health.backend) {
+            "FOLDER" -> "PC library"
+            "INTERNAL", "SAF" -> "Phone library"
+            else -> "Library"
+        }
+        val host = runCatching { java.net.URI(profile.url).host }.getOrNull().orEmpty().trim('[', ']')
+        val name = if (host.isEmpty()) kind else "$kind ($host)"
+        prefs.renameLibrary(profile.id, name)
+        _state.update { it.copy(libraries = prefs.libraries()) }
+        return name
+    }
+
     fun refresh() {
+        _state.update {
+            it.copy(libraries = container.prefs.libraries(), activeLibraryId = container.prefs.activeLibrary().id)
+        }
         // A phone nobody has configured has no library to load. Probing anyway resolves to loopback,
         // is refused because no server was ever started, and the grid then renders that as a network
         // fault -- so the first thing a brand new install shows is troubleshooting steps for a
@@ -159,6 +205,11 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             }
             loadMore()
             api.refreshEndpoints()
+            // A library carried over from before there was a list still has its placeholder name;
+            // the first successful connection gives it a real one. A no-op once named or renamed.
+            container.prefs.remoteLibraries()
+                .firstOrNull { it.id == container.prefs.activeLibraryId }
+                ?.let { runCatching { nameFromServer(it) } }
             // Re-read after the refresh: this is the call that discovers the addresses beyond the
             // one this client paired against, so before it the list is just that single address.
             _state.update { it.copy(knownAddresses = knownAddresses()) }

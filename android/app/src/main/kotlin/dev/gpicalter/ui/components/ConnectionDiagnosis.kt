@@ -36,7 +36,7 @@ fun diagnose(context: Context, knownAddresses: List<String>): Diagnosis {
     val wifiStep = if (lanAddress != null) {
         "Join the Wi-Fi the server is on — it answers at $lanAddress."
     } else {
-        "Join the same Wi-Fi network as the phone serving the library."
+        "Join the same Wi-Fi network as the phone or PC serving the library."
     }
 
     return when {
@@ -51,7 +51,7 @@ fun diagnose(context: Context, knownAddresses: List<String>): Diagnosis {
         tailscaleUp -> Diagnosis(
             headline = "Tailscale is on, but the library is not answering",
             steps = listOf(
-                "Check the phone serving the library is awake and its server is running.",
+                "Check the phone or PC serving the library is awake and PhotoHost is running there.",
                 "Check Tailscale is on there too — both ends have to be signed in.",
                 wifiStep,
             ),
@@ -70,7 +70,7 @@ fun diagnose(context: Context, knownAddresses: List<String>): Diagnosis {
             steps = listOf(
                 wifiStep,
                 "Or turn on Tailscale, which works from any network.",
-                "If you are on the right Wi-Fi, check the server is running on the other phone.",
+                "If you are on the right Wi-Fi, check PhotoHost is running on the phone or PC that keeps this library.",
             ),
         )
     }
