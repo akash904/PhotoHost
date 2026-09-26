@@ -281,6 +281,11 @@ button.ghost.danger:hover { border-color: #ff6b6b; color: #ff6b6b; }
   max-height: 100%;
   object-fit: contain;
 }
+/* The page's own pinch-zoom would fight the viewer's; the viewer handles every gesture itself. */
+#viewerMedia { overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+#viewerMedia img { will-change: transform; }
+#viewer.zoomed #viewerMedia { cursor: grab; }
+#viewer.zoomed #viewerMedia:active { cursor: grabbing; }
 
 .vbtn {
   position: absolute;
@@ -323,9 +328,61 @@ button.ghost.danger:hover { border-color: #ff6b6b; color: #ff6b6b; }
 #viewerInfo dd { margin: 0; word-break: break-word; }
 #viewerInfo .warn { color: #ffcc66; }
 
+/* ---------------------------------------------------------------- upload */
+
+#dropzone {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  border: 3px dashed var(--accent);
+  border-radius: 12px;
+  margin: 8px;
+}
+#dropzone div {
+  padding: 18px 26px;
+  border-radius: 999px;
+  background: var(--bg-elev);
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* Bottom-left, clear of the scrubber on the right, and above the grid but below the viewer. */
+#uploads {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 40;
+  width: min(380px, calc(100vw - 24px - var(--scrubber-w)));
+  padding: 10px 12px 12px;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.35);
+  font-size: 13px;
+}
+#uploads .uhead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+#uploads .ubar { height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+#upBar { height: 100%; width: 0; background: var(--accent); transition: width 200ms linear; }
+#upLine { margin-top: 6px; overflow-wrap: anywhere; }
+#upFailed { margin-top: 6px; }
+#upFailed summary { cursor: pointer; color: #ff6b6b; }
+#upFailed ul { margin: 6px 0 0; padding-left: 18px; max-height: 160px; overflow-y: auto; overflow-wrap: anywhere; }
+
 /* Phones: the scrubber gets out of the way and the grid takes the full width. */
 @media (max-width: 640px) {
   :root { --scrubber-w: 34px; }
   #grid { padding: 6px 6px 80px 6px; }
   .sb-month .lbl { opacity: 1; font-size: 9px; }
+}
+
+/* Narrow phones: four buttons and two tabs do not fit beside the name and the count. */
+@media (max-width: 480px) {
+  #topbar { gap: 6px; padding: 0 8px; }
+  #topbar .brand, #count { display: none; }
+  button.ghost { padding: 5px 10px; }
 }
