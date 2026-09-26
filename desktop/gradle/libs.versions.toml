@@ -1,0 +1,51 @@
+# Single source of dependency versions.
+#
+# Where a library is shared with the Android app (gpicAlter), the version is deliberately the SAME
+# one gpicAlter pins -- Kotlin, KSP, coroutines, serialization, Ktor, Room, zxing. The desktop server
+# exists to behave identically to the phone's, and two versions of Room or Ktor would be two sets of
+# behaviour to keep in step.
+#
+# Desktop-only libraries were resolved against Maven Central / Google Maven on 2026-09-25:
+#   metadata-extractor 2.21.0, TwelveMonkeys 3.15.2, slf4j 2.0.17.
+# sqlite-bundled is 2.6.2 rather than the newer 2.7.1 because 2.6.2 is what Room 2.8.5 itself
+# depends on (androidx.sqlite:sqlite 2.6.2 in the gpicAlter build); mixing them buys nothing.
+
+[versions]
+kotlin = "2.4.20"
+ksp = "2.3.12"
+coroutines = "1.11.0"
+serializationJson = "1.11.0"
+ktor = "3.6.0"
+room = "2.8.5"
+sqlite = "2.6.2"
+zxing = "3.5.4"
+metadataExtractor = "2.21.0"
+twelvemonkeys = "3.15.2"
+slf4j = "2.0.17"
+# Only for the native Windows file dialog (IFileOpenDialog). Resolved 2026-09-25.
+jna = "5.19.1"
+
+[libraries]
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serializationJson" }
+ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
+ktor-server-cio = { module = "io.ktor:ktor-server-cio", version.ref = "ktor" }
+ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negotiation", version.ref = "ktor" }
+ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
+ktor-network-tls-certificates = { module = "io.ktor:ktor-network-tls-certificates", version.ref = "ktor" }
+ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
+ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
+room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
+room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+sqlite-bundled = { module = "androidx.sqlite:sqlite-bundled", version.ref = "sqlite" }
+zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
+metadata-extractor = { module = "com.drewnoakes:metadata-extractor", version.ref = "metadataExtractor" }
+twelvemonkeys-jpeg = { module = "com.twelvemonkeys.imageio:imageio-jpeg", version.ref = "twelvemonkeys" }
+twelvemonkeys-webp = { module = "com.twelvemonkeys.imageio:imageio-webp", version.ref = "twelvemonkeys" }
+slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
+jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
