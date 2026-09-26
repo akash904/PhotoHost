@@ -112,9 +112,15 @@ object NetInterfaces {
      * [endpoints] stays unfiltered, so the certificate still names the IPv6 address. It costs
      * nothing there, and it means typing that address by hand still validates for anyone whose
      * network does route it.
+     *
+     * Only Wi-Fi (including this phone's own hotspot), Ethernet and Tailscale. The mobile-data
+     * address used to be listed, labelled as usually unreachable: it is -- the carrier's NAT drops
+     * inbound connections -- yet it went into every pairing code and every client's failover list,
+     * each probe of it costing a timeout. The same goes for any other VPN's tunnel. An allowlist, so
+     * an interface nobody has thought about yet stays out rather than in.
      */
     fun displayEndpoints(): List<Endpoint> =
-        endpoints().filterNot { it.label.contains("IPv6") }
+        endpoints().filter { it.label in ADVERTISED }
 
     /** Whether a Tailscale interface is up, which changes what remote access has to do. */
     fun hasTailscale(): Boolean = endpoints().any { it.label == TAILSCALE }
@@ -139,10 +145,18 @@ object NetInterfaces {
     private fun labelFor(name: String): String = when {
         name.startsWith("tailscale") -> TAILSCALE
         name.startsWith("wlan") -> "Wi-Fi"
+        // This phone's own hotspot: Samsung calls it swlan0, AOSP ap0 or softap0. Devices joined to
+        // the hotspot reach the library through it, so it counts as Wi-Fi.
+        name.startsWith("swlan") || name.startsWith("ap") || name.startsWith("softap") -> HOTSPOT
         name.startsWith("rmnet") || name.startsWith("ccmni") -> "Mobile (usually unreachable: CGNAT)"
         name.startsWith("eth") -> "Ethernet"
         else -> name
     }
+
+    private const val HOTSPOT = "Wi-Fi hotspot"
+
+    /** The labels [displayEndpoints] keeps: networks another device can reach this phone over. */
+    private val ADVERTISED = setOf("Wi-Fi", HOTSPOT, "Ethernet", "Tailscale")
 
     private const val TAILSCALE = "Tailscale"
 

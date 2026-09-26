@@ -305,14 +305,6 @@ class MediaServerService : Service() {
     }
 
     /**
-     * The HTTPS address to show in the pairing QR.
-     *
-     * A remote-capable address when one exists, since that code is usually being scanned so the
-     * other phone works away from home. Falls back to a LAN address so pairing still works at home
-     * when there is no remote path at all -- which, behind carrier NAT and without Tailscale, is the
-     * normal case rather than an edge one.
-     */
-    /**
      * Every address a client could use, plain and TLS, in preference order.
      *
      * Built from the display list rather than every interface: an address not worth showing a person
@@ -326,8 +318,20 @@ class MediaServerService : Service() {
         return plain + secure
     }
 
+    /**
+     * The HTTPS address to show in the pairing QR.
+     *
+     * A remote-capable address when one exists, since that code is usually being scanned so the
+     * other phone works away from home. Falls back to a LAN address so pairing still works at home
+     * when there is no remote path at all -- which, behind carrier NAT and without Tailscale, is the
+     * normal case rather than an edge one.
+     *
+     * The fallback is the first *advertised* address. It used to be the first of every interface,
+     * and the interface order is the kernel's: with mobile data on, that could be the carrier's
+     * address, unreachable behind CGNAT, as the code's primary.
+     */
     private fun secureUrl(port: Int): String? {
-        val endpoint = NetInterfaces.remoteEndpoint() ?: NetInterfaces.endpoints().firstOrNull()
+        val endpoint = NetInterfaces.remoteEndpoint() ?: NetInterfaces.displayEndpoints().firstOrNull()
         return endpoint?.let { "https://${it.host}:${port + 363}" }
     }
 
