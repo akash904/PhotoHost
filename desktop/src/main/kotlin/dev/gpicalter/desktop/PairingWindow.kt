@@ -75,6 +75,13 @@ class PairingWindow(
         }
     }
 
+    private val firewallLine = JLabel(" ")
+    private val firewallFix = JButton("Allow through firewall...").apply {
+        isVisible = false
+        addActionListener { allowThroughFirewall() }
+    }
+    private var firewallCheck: Job? = null
+
     private val importLine = JLabel(" ")
     private val importCancel = JButton("Cancel import").apply { isVisible = false }
     private val importResume = JButton("Resume import").apply { isVisible = false }
@@ -145,6 +152,11 @@ class PairingWindow(
             })
             add(Box.createVerticalStrut(6))
             add(autostart)
+            add(JPanel(FlowLayout(FlowLayout.LEFT, 0, 4)).apply {
+                add(firewallLine)
+                add(Box.createHorizontalStrut(8))
+                add(firewallFix)
+            })
             add(Box.createVerticalStrut(14))
             add(JLabel("<html><b>Add photos from this PC</b><br>Copies a whole folder, or photos and " +
                 "videos you pick, into the library. The originals are never changed.</html>"))
@@ -175,6 +187,7 @@ class PairingWindow(
         frame.pack()
         frame.setLocationRelativeTo(null)
         frame.isVisible = !startHidden
+        refreshFirewall()
     }
 
     /** Shows the window and brings it in front of everything, e.g. from the tray or a second launch. */
@@ -187,6 +200,64 @@ class PairingWindow(
         frame.toFront()
         frame.requestFocus()
         frame.isAlwaysOnTop = false
+        // The user may have changed the firewall since the window was last up; a check is cheap.
+        refreshFirewall()
+    }
+
+    /** Re-reads the firewall rules off the UI thread and shows the verdict. */
+    private fun refreshFirewall() {
+        if (firewallCheck?.isActive == true) return
+        firewallCheck = scope.launch(Dispatchers.IO) {
+            val s = Firewall.check()
+            SwingUtilities.invokeLater { renderFirewall(s) }
+        }
+    }
+
+    private fun renderFirewall(s: Firewall.State) {
+        firewallLine.text = when (s) {
+            Firewall.State.Open ->
+                "<html>Windows Firewall: phones can connect.</html>"
+            is Firewall.State.NotAllowed ->
+                "<html><font color='#b00020'><b>Windows Firewall blocks phones</b> on ${Firewall.describe(s.profiles)}" +
+                    (if (s.profiles and Firewall.PUBLIC != 0) " (Tailscale counts as public)" else "") + ".</font></html>"
+            is Firewall.State.BlockAll ->
+                "<html><font color='#b00020'><b>Windows Firewall blocks all incoming connections</b> on " +
+                    "${Firewall.describe(s.profiles)}.<br>Turn that off in Windows Security, Firewall &amp; network protection.</font></html>"
+            is Firewall.State.Unknown ->
+                "<html><font color='#666666'>Windows Firewall: ${s.reason}.</font></html>"
+        }
+        firewallFix.isVisible = s is Firewall.State.NotAllowed
+        frame.pack()
+    }
+
+    private fun allowThroughFirewall() {
+        val ok = JOptionPane.showConfirmDialog(
+            frame,
+            "<html>Let your phones connect to PhotoHost through Windows Firewall?<br><br>" +
+                "Windows will ask for administrator permission. PhotoHost then replaces its firewall rules with<br>" +
+                "one rule, named <b>${Firewall.RULE_NAME}</b>, that allows incoming connections to this PhotoHost.exe<br>" +
+                "on private and public networks. Tailscale counts as public.<br><br>" +
+                "Phones still need the pairing code; the rule only lets them knock.</html>",
+            "Allow through firewall",
+            JOptionPane.OK_CANCEL_OPTION,
+        )
+        if (ok != JOptionPane.OK_OPTION) return
+        firewallFix.isEnabled = false
+        scope.launch(Dispatchers.IO) {
+            val result = Firewall.allow()
+            val after = Firewall.check()
+            SwingUtilities.invokeLater {
+                firewallFix.isEnabled = true
+                renderFirewall(after)
+                val problem = when {
+                    result is Firewall.AllowResult.Declined -> null // their choice; the line still says what is wrong
+                    after is Firewall.State.NotAllowed -> (result as? Firewall.AllowResult.Failed)?.message
+                        ?: "The rule was added, but Windows Firewall still blocks PhotoHost."
+                    else -> null
+                }
+                problem?.let { JOptionPane.showMessageDialog(frame, it, "Allow through firewall", JOptionPane.WARNING_MESSAGE) }
+            }
+        }
     }
 
     fun hide() = SwingUtilities.invokeLater { frame.isVisible = false }
