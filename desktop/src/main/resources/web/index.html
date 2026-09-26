@@ -17,8 +17,11 @@
   </nav>
   <div class="spacer"></div>
   <div id="count" class="muted"></div>
+  <button id="upload" class="ghost" title="Add photos and videos from this device (or drop them anywhere on the page)">Upload</button>
   <button id="select" class="ghost" title="Select items">Select</button>
   <button id="rescan" class="ghost" title="Scan the library for new files">Scan</button>
+  <input id="uploadInput" type="file" multiple hidden
+         accept="image/*,video/*,.heic,.heif,.avif,.dng,.cr2,.cr3,.nef,.arw,.orf,.rw2,.raf,.srw,.mkv,.3gp">
 </header>
 
 <!-- Replaces the top bar while items are selected, so the destructive action is never adjacent
@@ -43,8 +46,24 @@
 
 <div id="empty" class="hidden">
   <h2>Nothing here yet</h2>
-  <p class="muted">Put photos in the library and press <strong>Scan</strong>.</p>
-  <pre>adb push photo.jpg /sdcard/Android/data/dev.gpicalter/files/library/</pre>
+  <p class="muted">Drag photos and videos onto this page, or press <strong>Upload</strong>.
+    Files put straight into the library folder appear after <strong>Scan</strong>.</p>
+</div>
+
+<!-- Shown only while files are dragged over the page. It ignores the pointer, so the drag events
+     keep going to the page underneath and a drop anywhere counts. -->
+<div id="dropzone" class="hidden"><div>Drop photos and videos to add them to the library</div></div>
+
+<div id="uploads" class="hidden" role="status" aria-live="polite">
+  <div class="uhead">
+    <strong id="upTitle"></strong>
+    <div class="spacer"></div>
+    <button id="upCancel" class="ghost">Cancel</button>
+    <button id="upClose" class="ghost" aria-label="Close">✕</button>
+  </div>
+  <div class="ubar"><div id="upBar"></div></div>
+  <div id="upLine" class="muted"></div>
+  <details id="upFailed" class="hidden"><summary></summary><ul></ul></details>
 </div>
 
 <!-- Fullscreen viewer. Kept in the DOM rather than created on demand so opening is instant. -->
