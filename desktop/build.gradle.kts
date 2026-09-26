@@ -85,6 +85,13 @@ dependencies {
 // jpackage is not in Android Studio's bundled JDK, so the packaging JDK is a Gradle toolchain
 // (Temurin 25), downloaded into Gradle's cache on first use.
 
+/**
+ * The version Windows sees: in the exe, the installer and Apps & features. Purely numeric
+ * MAJOR.MINOR.PATCH, because jpackage and the Store both require it, and it must only ever go up:
+ * an installer with a lower version will not upgrade over a higher one.
+ */
+val appVersion = "0.2.0"
+
 val packagingJdk = javaToolchains.launcherFor {
     languageVersion.set(JavaLanguageVersion.of(25))
     vendor.set(JvmVendorSpec.ADOPTIUM)
@@ -111,7 +118,7 @@ val generateIcon = tasks.register<JavaExec>("generateIcon") {
     outputs.file(iconFile)
 }
 
-tasks.register<Exec>("packageExe") {
+val packageExe = tasks.register<Exec>("packageExe") {
     group = "distribution"
     description = "Builds build/package/PhotoHost/PhotoHost.exe with a bundled Java runtime."
     dependsOn(tasks.installDist, cleanPackage, generateIcon)
@@ -125,8 +132,7 @@ tasks.register<Exec>("packageExe") {
     args(
         "--type", "app-image",
         "--name", "PhotoHost",
-        // jpackage wants a purely numeric version.
-        "--app-version", "0.1.0",
+        "--app-version", appVersion,
         "--vendor", "PhotoHost",
         "--description", "Photo library server for the PhotoHost phone app",
         "--input", libDir.get().asFile.absolutePath,
@@ -137,11 +143,48 @@ tasks.register<Exec>("packageExe") {
         "--dest", outDir.get().asFile.absolutePath,
         "--icon", iconFile.get().asFile.absolutePath,
     )
+    args("--copyright", "PhotoHost")
     jvmFlags.forEach { args("--java-options", it) }
     // Without a cap the JVM reserves up to a quarter of the PC's RAM and, being lazy about giving it
     // back, an idle server was observed at 644 MB. Decoding is subsampled, so even a 50 MP photo
     // needs a few tens of MB; 512 MB leaves room for several thumbnails in parallel.
     args("--java-options", "-Xmx512m")
+}
+
+// `gradlew packageInstaller` -> build/installer/PhotoHost-Setup-<version>.exe, an Inno Setup
+// installer around the app image above. See packaging/PhotoHost.iss for why it is shaped the way it is
+// (Microsoft Store requirements).
+//
+// Signing is optional and never configured in this file, because a certificate belongs to one
+// machine: set PHOTOHOST_SIGNTOOL to a full signtool command line ending in $f, e.g.
+//   "C:\Program Files (x86)\Windows Kits\10\bin\x64\signtool.exe" sign /fd sha256 /tr http://timestamp.digicert.com /td sha256 /a $f
+// and the setup, the uninstaller and PhotoHost.exe are all signed. Without it the build is unsigned.
+tasks.register<Exec>("packageInstaller") {
+    group = "distribution"
+    description = "Builds build/installer/PhotoHost-Setup-<version>.exe."
+    dependsOn(packageExe)
+
+    val iscc = providers.environmentVariable("ISCC").orNull
+        ?: listOf(
+            "${System.getenv("LOCALAPPDATA")}\\Programs\\Inno Setup 6\\ISCC.exe",
+            "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe",
+            "C:\\Program Files\\Inno Setup 6\\ISCC.exe",
+        ).firstOrNull { File(it).isFile }
+        ?: "ISCC.exe"
+    val outDir = layout.buildDirectory.dir("installer")
+    val sign = providers.environmentVariable("PHOTOHOST_SIGNTOOL").orNull
+    outputs.dir(outDir)
+
+    executable = iscc
+    args(
+        "/Qp",
+        "/DAppVersion=$appVersion",
+        "/DSourceDir=${layout.buildDirectory.dir("package/PhotoHost").get().asFile.absolutePath}",
+        "/DIconFile=${iconFile.get().asFile.absolutePath}",
+        "/DOutputDir=${outDir.get().asFile.absolutePath}",
+    )
+    if (sign != null) args("/DSign", "/Sphotohost=$sign")
+    args(file("packaging/PhotoHost.iss").absolutePath)
 }
 
 tasks.test {
