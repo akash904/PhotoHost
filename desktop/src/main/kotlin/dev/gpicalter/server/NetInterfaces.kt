@@ -44,11 +44,14 @@ object NetInterfaces {
                 // adapter and is wanted. See [isHostOnlyAdapter].
                 if (isHostOnlyAdapter(nif)) continue
 
+                // A VPN that presents itself as an Ethernet card keeps its own name as the label,
+                // so [displayEndpoints] leaves it out like any other VPN. See [isVpnAdapter].
+                val label = if (isVpnAdapter(nif)) nif.name else labelFor(nif.name)
                 for (addr in addresses) {
                     if (addr.isLoopbackAddress || addr.isLinkLocalAddress) continue
                     val raw = addr.hostAddress ?: continue
                     when (addr) {
-                        is Inet4Address -> out += Endpoint(labelFor(nif.name), raw)
+                        is Inet4Address -> out += Endpoint(label, raw)
                         is Inet6Address -> {
                             // Skip temporary privacy addresses: they rotate every few hours, so
                             // pairing with one produces a client that mysteriously stops working.
@@ -57,7 +60,7 @@ object NetInterfaces {
                             if (!raw.contains("ff:fe", ignoreCase = true)) continue
                             // Strip any %scope suffix and bracket it, as a URL requires.
                             val host = "[" + raw.substringBefore('%') + "]"
-                            out += Endpoint(labelFor(nif.name) + " (IPv6)", host)
+                            out += Endpoint("$label (IPv6)", host)
                         }
                         else -> continue
                     }
@@ -116,9 +119,17 @@ object NetInterfaces {
      * [endpoints] stays unfiltered, so the certificate still names the IPv6 address. It costs
      * nothing there, and it means typing that address by hand still validates for anyone whose
      * network does route it.
+     *
+     * DIVERGES FROM gpicAlter: on a PC, only Wi-Fi, wired Ethernet and Tailscale. A PC is often on a
+     * work VPN as well -- observed on the development PC: a dial-up style VPN, `ppp_0` at 10.8.0.2,
+     * beside Wi-Fi. That address reaches the office network, not this PC from a phone, yet it went
+     * into every pairing code and every client's failover list, and could even become the code's
+     * primary address when Tailscale was down. An allowlist rather than a list of VPNs to exclude,
+     * because VPN clients are many and new ones appear; a network that is neither Wi-Fi, Ethernet nor
+     * Tailscale is not one a phone reaches this PC over.
      */
     fun displayEndpoints(): List<Endpoint> =
-        endpoints().filterNot { it.label.contains("IPv6") }
+        endpoints().filter { it.label in ADVERTISED }
 
     /** Whether a Tailscale interface is up, which changes what remote access has to do. */
     fun hasTailscale(): Boolean = endpoints().any { it.label == TAILSCALE }
@@ -156,6 +167,36 @@ object NetInterfaces {
         val desc = (nif.displayName ?: "") + " " + nif.name
         return HOST_ONLY_MARKERS.any { desc.contains(it, ignoreCase = true) }
     }
+
+    /**
+     * VPN clients that present an Ethernet adapter, which Java then names `ethernet_NNNNN` like a
+     * real network card. Recognised by the adapter description, which on Windows is what Java
+     * reports as the display name. VPNs that appear as `ppp_` or tunnel adapters need no entry:
+     * their names are not Wi-Fi or Ethernet to begin with.
+     */
+    private fun isVpnAdapter(nif: NetworkInterface): Boolean {
+        val desc = nif.displayName ?: return false
+        return VPN_MARKERS.any { desc.contains(it, ignoreCase = true) }
+    }
+
+    private val VPN_MARKERS = listOf(
+        "VPN",
+        "TAP-Windows",
+        "TAP Adapter",
+        "WireGuard",
+        "Wintun",
+        "OpenVPN",
+        "AnyConnect",
+        "Fortinet",
+        "PANGP",
+        "GlobalProtect",
+        "Juniper",
+        "Zscaler",
+        "WAN Miniport",
+    )
+
+    /** The labels [displayEndpoints] keeps: networks a phone can reach this PC over. */
+    private val ADVERTISED = setOf("Wi-Fi", "Ethernet", "Tailscale")
 
     private val HOST_ONLY_MARKERS = listOf(
         "Hyper-V",

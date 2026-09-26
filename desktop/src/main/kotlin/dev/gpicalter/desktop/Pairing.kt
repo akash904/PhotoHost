@@ -22,9 +22,13 @@ object Pairing {
         return plain + secure
     }
 
-    /** Tailscale when it is up, otherwise the first (LAN) address -- the phone's rule. */
+    /**
+     * Tailscale when it is up, otherwise the first LAN address -- the phone's rule, except that the
+     * phone takes the first of every address. On a PC that could be a work VPN's, so this takes
+     * the first address that is actually advertised.
+     */
     fun secureUrl(httpsPort: Int): String? {
-        val endpoint = NetInterfaces.remoteEndpoint() ?: NetInterfaces.endpoints().firstOrNull()
+        val endpoint = NetInterfaces.remoteEndpoint() ?: NetInterfaces.displayEndpoints().firstOrNull()
         return endpoint?.let { "https://${it.host}:$httpsPort" }
     }
 
