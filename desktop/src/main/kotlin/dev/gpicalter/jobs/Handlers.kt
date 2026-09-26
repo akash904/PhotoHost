@@ -7,6 +7,7 @@ import dev.gpicalter.data.entity.MediaType
 import dev.gpicalter.data.entity.ThumbState
 import dev.gpicalter.data.entity.ThumbnailEntity
 import dev.gpicalter.index.StoreScanner
+import dev.gpicalter.media.DecoderUnavailableException
 import dev.gpicalter.media.ThumbnailCache
 import dev.gpicalter.media.ThumbnailGenerator
 import dev.gpicalter.storage.LibraryStore
@@ -86,6 +87,12 @@ class ThumbnailHandler(
                 ),
             )
             Outcome.Done
+        } catch (e: DecoderUnavailableException) {
+            // Desktop only: the Windows codec for this file is not installed. Not the file's fault and
+            // not transient, so neither FAILED nor a retry: parked until an extension is installed,
+            // and the row removed so the server answers "not ready" rather than "running" meanwhile.
+            db.thumbnails().delete(assetId, sizeClass)
+            Outcome.Blocked(e.message ?: "decoder not installed")
         } catch (t: OutOfMemoryError) {
             // Not retryable in any useful sense, and retrying risks taking the process with it.
             markFailed(assetId, sizeClass, job.attempts, "OOM", permanent = true)

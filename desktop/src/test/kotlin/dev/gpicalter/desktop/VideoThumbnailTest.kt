@@ -24,8 +24,22 @@ import kotlin.test.assertTrue
  */
 class VideoThumbnailTest {
 
+    /** Through Windows' thumbnailer, which is first in line on Windows. */
     @Test
-    fun `video thumbnail is rendered upright, matching ffmpeg's own rotation`() = runBlocking {
+    fun `video thumbnail is rendered upright, matching ffmpeg's own rotation`() = uprightThroughTheServer()
+
+    /** Through the ffmpeg fallback: Windows' decoders switched off, so the server must rotate itself. */
+    @Test
+    fun `the ffmpeg fallback renders video thumbnails upright too`() {
+        dev.gpicalter.media.WindowsCodecs.enabled = false
+        try {
+            uprightThroughTheServer()
+        } finally {
+            dev.gpicalter.media.WindowsCodecs.enabled = true
+        }
+    }
+
+    private fun uprightThroughTheServer() = runBlocking {
         val ffmpeg = VideoFrames.locate(null).ffmpeg
         assumeTrue(ffmpeg != null, "no ffmpeg on this machine")
 

@@ -1,5 +1,6 @@
 package dev.gpicalter.media
 
+import dev.gpicalter.storage.FolderStore
 import dev.gpicalter.storage.LibraryStore
 import dev.gpicalter.storage.StoreEntry
 
@@ -20,7 +21,16 @@ class DesktopMediaProbe(
      * portrait photo carrying EXIF orientation 6 or 8 gets a sideways placeholder there.
      */
     override fun blurhash(store: LibraryStore, entry: StoreEntry, orientation: Int): String? {
-        if (!ImageDecoding.canDecode(entry.mime)) return null
+        if (!ImageDecoding.canDecode(entry.mime)) {
+            // HEIC and friends: Windows decodes a 64 px version directly. A missing codec simply means
+            // no placeholder, as it always has.
+            if (!WindowsCodecs.available || !entry.mime.startsWith("image/")) return null
+            val file = (store as? FolderStore)?.pathFor(entry.relPath)?.toFile() ?: return null
+            return runCatching {
+                val small = ImageDecoding.fitLongEdge(ImageDecoding.rotate(WindowsCodecs.decodeImage(file, 64), orientation), 32)
+                BlurHash.encode(ImageDecoding.pixels(small), small.width, small.height)
+            }.getOrNull()
+        }
         return store.openRead(entry.relPath).use { handle ->
             val bounds = ImageDecoding.bounds(handle.inputStream()) ?: return@use null
             val sample = ImageDecoding.sampleFor(bounds.width, 64)

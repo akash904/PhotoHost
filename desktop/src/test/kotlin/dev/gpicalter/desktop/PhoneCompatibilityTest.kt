@@ -78,6 +78,8 @@ class PhoneCompatibilityTest {
         // Pinned off so the no-decoder path stays covered on machines that do have ffmpeg.
         // VideoThumbnailTest covers the path where it is present.
         config.ffmpeg = "none"
+        // Likewise Windows' own decoders, which would otherwise render the video and the HEIC.
+        dev.gpicalter.media.WindowsCodecs.enabled = false
         server = DesktopServer(config)
         assertTrue(server.start(), "server did not start: ${server.status.value.error}")
 
@@ -91,6 +93,7 @@ class PhoneCompatibilityTest {
 
     @AfterAll
     fun stopServer() {
+        dev.gpicalter.media.WindowsCodecs.enabled = true
         runCatching { api.close() }
         server.stop()
         dataDir.deleteRecursively()

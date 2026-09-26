@@ -11,6 +11,10 @@
 # OS
 Thumbs.db
 
+# Real-world sample files for tests that skip without them: third-party HEIC samples under their own
+# licences, and photos from our own phones. Never committed.
+/testdata/
+
 # Deliberately NOT ignored:
 #   gradle/wrapper/gradle-wrapper.jar  -- without it a fresh clone cannot build
 #   schemas/                           -- exported Room schemas. They must stay identical to
