@@ -187,6 +187,11 @@ tasks.register<Exec>("packageInstaller") {
     args(file("packaging/PhotoHost.iss").absolutePath)
 }
 
+// The web page is shared with the phone app and lives once, in web/ at the repository root.
+tasks.processResources {
+    from(rootDir.resolve("../web")) { into("web") }
+}
+
 tasks.test {
     useJUnitPlatform()
     jvmArgs(jvmFlags)

@@ -76,6 +76,35 @@ android {
     }
 }
 
+/**
+ * The web page is shared with the desktop server and lives once, in web/ at the repository root.
+ * Copied in as generated assets under "web/", the asset path the server reads it from.
+ */
+abstract class CopyWebAssets : DefaultTask() {
+    @get:InputDirectory
+    abstract val source: DirectoryProperty
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        val out = outputDir.get().asFile
+        out.deleteRecursively()
+        source.get().asFile.copyRecursively(File(out, "web"))
+    }
+}
+
+val copyWebAssets = tasks.register<CopyWebAssets>("copyWebAssets") {
+    source.set(rootProject.layout.projectDirectory.dir("../web"))
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(copyWebAssets, CopyWebAssets::outputDir)
+    }
+}
+
 // Schemas are committed so migrations can be written against a known-good starting point and
 // tested. fallbackToDestructiveMigration is never acceptable here: it silently deletes the index.
 ksp {
