@@ -43,7 +43,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.GpicAlter">
+        android:theme="@style/Theme.PhotoHost">
 
         <activity
             android:name=".ui.MainActivity"

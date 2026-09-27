@@ -7,7 +7,7 @@ plugins {
     application
 }
 
-group = "dev.gpicalter"
+group = "io.github.akash904.photohost"
 version = "0.1-m0"
 
 // Bytecode for 21, built by whatever JDK runs Gradle (Android Studio's JBR 25 on the dev machine).
@@ -22,7 +22,7 @@ java {
     targetCompatibility = JavaVersion.VERSION_21
 }
 
-// Same schema directory convention as gpicAlter. The exported JSON is compared against the phone's
+// Same schema directory convention as the phone app. The exported JSON is compared against the phone's
 // app/schemas to prove both servers create the same database.
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
@@ -34,7 +34,7 @@ ksp {
 val jvmFlags = listOf("--enable-native-access=ALL-UNNAMED")
 
 application {
-    mainClass.set("dev.gpicalter.desktop.MainKt")
+    mainClass.set("io.github.akash904.photohost.desktop.MainKt")
     applicationDefaultJvmArgs = jvmFlags
 }
 
@@ -113,7 +113,7 @@ val cleanPackage = tasks.register<Delete>("cleanPackage") {
 val iconFile = layout.buildDirectory.file("icon/PhotoHost.ico")
 val generateIcon = tasks.register<JavaExec>("generateIcon") {
     classpath = sourceSets.main.get().runtimeClasspath
-    mainClass.set("dev.gpicalter.desktop.AppIconKt")
+    mainClass.set("io.github.akash904.photohost.desktop.AppIconKt")
     args(iconFile.get().asFile.absolutePath, layout.buildDirectory.file("icon/preview.png").get().asFile.absolutePath)
     outputs.file(iconFile)
 }
@@ -137,7 +137,7 @@ val packageExe = tasks.register<Exec>("packageExe") {
         "--description", "Photo library server for the PhotoHost phone app",
         "--input", libDir.get().asFile.absolutePath,
         "--main-jar", "${project.name}-${project.version}.jar",
-        "--main-class", "dev.gpicalter.desktop.MainKt",
+        "--main-class", "io.github.akash904.photohost.desktop.MainKt",
         "--add-modules", runtimeModules.joinToString(","),
         "--jlink-options", "--strip-debug --no-man-pages --no-header-files --compress=zip-6",
         "--dest", outDir.get().asFile.absolutePath,

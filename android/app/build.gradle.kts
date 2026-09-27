@@ -22,13 +22,13 @@ plugins {
 }
 
 android {
-    namespace = "dev.gpicalter"
+    namespace = "io.github.akash904.photohost"
     compileSdk = libs.versions.compileSdk.get().toInt()
 
     defaultConfig {
         // Deliberately NO applicationIdSuffix on debug: a different application id orphans the
         // persisted SAF tree grants, so switching variants would silently lose access to the drive.
-        applicationId = "dev.gpicalter"
+        applicationId = "io.github.akash904.photohost"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = 1

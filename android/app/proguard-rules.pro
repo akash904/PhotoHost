@@ -80,8 +80,8 @@
 # mapping no longer parses under today's. DeviceRole failing to parse silently resets a phone to
 # "not set up yet", and StoreKind failing to match sends a library configured for a USB drive back
 # to internal storage.
--keep enum dev.gpicalter.core.DeviceRole { *; }
--keep enum dev.gpicalter.storage.StoreKind { *; }
+-keep enum io.github.akash904.photohost.core.DeviceRole { *; }
+-keep enum io.github.akash904.photohost.storage.StoreKind { *; }
 
 # The generic form, for any enum reached through values() or valueOf().
 -keepclassmembers enum * {

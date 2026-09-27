@@ -23,4 +23,4 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "photoHostPC"
+rootProject.name = "photohost-desktop"

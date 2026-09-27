@@ -1,4 +1,4 @@
-# gpicAlter
+# PhotoHost for Android
 
 A self-hosted photo library that **runs on an Android phone**. One app, two independent jobs:
 

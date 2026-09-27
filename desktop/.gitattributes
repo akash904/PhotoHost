@@ -1,4 +1,4 @@
-# Normalise to LF in the repository; check out native on Windows. Same rules as gpicAlter, so the
+# Normalise to LF in the repository; check out native on Windows. Same rules as the phone app, so the
 # exported Room schemas compare byte-for-byte across the two repos once committed.
 * text=auto
 

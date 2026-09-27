@@ -1,19 +1,18 @@
-# photoHostPC
+# PhotoHost for Windows
 
-A photo library server for Windows that the existing gpicAlter phone app talks to unmodified. The
+A photo library server for Windows that the PhotoHost phone app talks to unmodified. The
 phone and the PC are peers: either can hold a library, and a person can run several. This app is
-only the server. Browsing is the web UI it serves at `/`, or the phone app.
+only the server. Browsing is the web page it serves at `/` (from `../web`), or the phone app.
 
-## Status: milestone 0
+## Status
 
-Serves a library folder to the phone app over pinned TLS: timeline, thumbnails, originals with Range,
-and the phone's backup protocol (so a phone can back up to the PC). Checked by 25 end-to-end tests
-that drive the server through the phone's own client stack. **Not yet confirmed with a real phone
-scanning the real QR code.**
+Serves a library folder to the phone app over pinned TLS: timeline, thumbnails (including HEIC,
+AVIF and RAW through Windows' own codecs, and video frames, with ffmpeg as a fallback), originals with
+Range, and the phone's backup protocol. Imports folders or chosen files from the PC. Runs from the
+tray, optionally at sign-in, one instance at a time, and has an installer. Checked end to end with
+the real phone app.
 
-Not in this milestone: video and HEIC thumbnails (those files index, list and play; their thumbnail
-jobs wait as BLOCKED until a decoder ships), importing from other folders, installer, tray icon,
-autostart.
+Not yet: code signing (Smart App Control blocks the unsigned installer), MSIX and the Microsoft Store.
 
 ## Run the app
 
@@ -24,7 +23,8 @@ installing. It can be copied or zipped anywhere, but the exe must stay next to i
 
 The window shows the pairing QR code and link. **Change library folder...** picks the folder to
 serve. Each library folder gets its own index, and paired phones stay paired across a change.
-**Open in browser** opens the web UI on this PC. Closing the window stops the server.
+**Open in browser** opens the web UI on this PC. Closing the window hides PhotoHost to the tray;
+**Quit PhotoHost** (or Quit on the tray icon) stops the server.
 
 ```sh
 JAVA_HOME="/c/Program Files/Android/Android Studio/jbr" ./gradlew packageExe
@@ -59,19 +59,21 @@ Files copied into the library folder are picked up at start-up, or with **Rescan
 
 ## Pairing a phone
 
-1. Start the server. Windows Firewall asks whether Java may accept connections; allow **Private**
-   networks. The PC's Wi-Fi must be a Private network.
+1. Start the server. Windows Firewall asks whether PhotoHost may accept connections; allow it. If
+   that was cancelled, the window says phones are blocked and offers **Allow through firewall...**.
 2. On the phone: Settings, Scan a pairing code, then scan the window's QR code.
 3. The phone pins the certificate's fingerprint from the code and uses the TLS address.
 
-Pairing replaces whichever library the phone was showing; the app holds one library at a time.
+Pairing adds the PC as one more library in the phone app; the phone's own library, if it has one,
+stays. Only Wi-Fi, Ethernet and Tailscale addresses are advertised.
 
-## Relationship to gpicAlter
+## Relationship to the phone app
 
-The server code is **copied** from gpicAlter at commit `d43de56`, package names unchanged, so the
-planned extraction into a shared module is a move rather than a merge. Until then, a fix in either
-copy must be made in both. Every change from the phone's version is marked `DIVERGES FROM
-gpicAlter` or `DESKTOP REIMPLEMENTATION` in the source:
+The server code is **copied** from the phone app (`../android`) at its commit `d43de56`, with the
+same package names, so a later extraction into a shared module is a move rather than a merge. Until
+then, a fix in either copy must be made in both. The web page is already shared: one copy in
+`../web`. Every change from the phone's version is marked `DIVERGES FROM the phone app` or
+`DESKTOP REIMPLEMENTATION` in the source:
 
 | File | Change |
 |---|---|
@@ -90,10 +92,10 @@ gpicAlter` or `DESKTOP REIMPLEMENTATION` in the source:
 | `data/db/AppDatabase.kt` | Room's JVM builder with bundled SQLite; migrations on `SQLiteConnection`, same SQL |
 
 Unchanged apart from the `Log` import: `core/`, `data/entity`, `data/dao`, `jobs/JobRunner.kt`,
-`server/Auth.kt`, `server/TlsProxy.kt`, and the web UI.
+`server/Auth.kt`, `server/TlsProxy.kt`.
 
-**Database parity** is checked, not assumed: `schemas/.../4.json` is identical to gpicAlter's
-`app/schemas/.../4.json`, identity hash `c98416cf5463e8ac8d563a9cdcfa0571`.
+**Database parity** is checked, not assumed: `schemas/.../4.json` is identical to
+`../android/app/schemas/.../4.json`, identity hash `c98416cf5463e8ac8d563a9cdcfa0571`.
 
 ## Licences of shipped dependencies
 

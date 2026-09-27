@@ -20,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "gpicAlter"
+rootProject.name = "PhotoHost"
 include(":app")

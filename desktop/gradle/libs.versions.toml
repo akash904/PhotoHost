@@ -1,14 +1,14 @@
 # Single source of dependency versions.
 #
-# Where a library is shared with the Android app (gpicAlter), the version is deliberately the SAME
-# one gpicAlter pins -- Kotlin, KSP, coroutines, serialization, Ktor, Room, zxing. The desktop server
+# Where a library is shared with the Android app (android/), the version is deliberately the SAME
+# one the phone app pins -- Kotlin, KSP, coroutines, serialization, Ktor, Room, zxing. The desktop server
 # exists to behave identically to the phone's, and two versions of Room or Ktor would be two sets of
 # behaviour to keep in step.
 #
 # Desktop-only libraries were resolved against Maven Central / Google Maven on 2026-09-25:
 #   metadata-extractor 2.21.0, TwelveMonkeys 3.15.2, slf4j 2.0.17.
 # sqlite-bundled is 2.6.2 rather than the newer 2.7.1 because 2.6.2 is what Room 2.8.5 itself
-# depends on (androidx.sqlite:sqlite 2.6.2 in the gpicAlter build); mixing them buys nothing.
+# depends on (androidx.sqlite:sqlite 2.6.2 in the the phone app build); mixing them buys nothing.
 
 [versions]
 kotlin = "2.4.20"

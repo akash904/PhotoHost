@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!--
-      Display name only. The applicationId stays dev.gpicalter forever: it is baked into
+      Display name only. The applicationId stays io.github.akash904.photohost forever: it is baked into
       getExternalFilesDir(null)/library, into filesDir/thumbs and filesDir/tls, so changing it
       would orphan the photo library, the index and the certificate every paired client pins.
       Nobody ever sees an applicationId; they see this.

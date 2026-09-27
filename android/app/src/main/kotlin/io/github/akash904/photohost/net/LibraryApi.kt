@@ -1,0 +1,673 @@
+package io.github.akash904.photohost.net
+
+import io.github.akash904.photohost.core.Library
+import io.github.akash904.photohost.core.Prefs
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.engine.okhttp.OkHttp
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.timeout
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.client.request.parameter
+import io.ktor.client.request.forms.formData
+import io.ktor.client.request.patch
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
+import io.ktor.client.statement.HttpResponse
+import io.ktor.http.HttpHeaders
+import io.ktor.http.isSuccess
+import io.ktor.serialization.kotlinx.json.json
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+
+/**
+ * The one way this app reads a library.
+ *
+ * It is used identically whether the library is on this phone or another one: when serving locally
+ * the base URL is loopback. That keeps a single browsing code path, so the server phone exercises
+ * exactly the same client the laptop does and local-only bugs cannot hide.
+ */
+class LibraryApi(
+    private val prefs: Prefs,
+    /**
+     * Which library this client talks to, read on every use. The browsing client follows the library
+     * on screen; the backup client follows the backup target. Two instances, so switching what you
+     * look at can never redirect an upload in flight.
+     */
+    private val target: () -> Library,
+    /** The HTTP stack for a library: its certificate pin and its token. */
+    private val httpStack: (Library) -> okhttp3.OkHttpClient,
+) {
+
+    private val json = Json {
+        ignoreUnknownKeys = true
+        explicitNulls = false
+    }
+
+    /**
+     * Rebuilt whenever the certificate pin changes.
+     *
+     * This was a plain `val` and it was a real bug: the Ktor client captures its engine at
+     * construction, and this class is created lazily -- in practice before the user has paired.
+     * The pin was therefore fixed as "none" forever, and pairing with a TLS server afterwards
+     * failed with "trust anchor not found" even though the fingerprint had been stored correctly.
+     */
+    @Volatile
+    private var cached: Pair<String, HttpClient>? = null
+
+    /**
+     * Rebuilt whenever the library or its pin changes -- a different library has a different
+     * certificate to trust and a different token to present.
+     */
+    val client: HttpClient
+        get() {
+            val lib = target()
+            val key = "${lib.id}|${lib.fingerprint}"
+            cached?.let { (cachedKey, existing) -> if (cachedKey == key) return existing }
+            val fresh = HttpClient(OkHttp) {
+                engine { preconfigured = httpStack(lib) }
+                expectSuccess = false
+                install(ContentNegotiation) { json(json) }
+                install(HttpTimeout) {
+                    // Generous: the server is a phone that may be busy thumbnailing a backlog.
+                    requestTimeoutMillis = 30_000
+                    connectTimeoutMillis = 10_000
+                    socketTimeoutMillis = 30_000
+                }
+            }
+            // The old client owns a connection pool and threads; dropping it without closing
+            // leaks both every time the user re-pairs.
+            cached?.second?.let { old -> runCatching { old.close() } }
+            cached = key to fresh
+            return fresh
+        }
+
+    /** The library the cached address below belongs to. */
+    @Volatile
+    private var boundId: String? = null
+
+    /**
+     * Drops what was learned about the previous library when the target changes. The address that
+     * answered for the phone library is meaningless for the PC one, and keeping it would send the
+     * first requests after a switch to the wrong server.
+     */
+    private fun followTarget(): Library {
+        val lib = target()
+        if (lib.id != boundId) {
+            boundId = lib.id
+            activeBase = null
+            failedSweeps = 0
+        }
+        return lib
+    }
+
+    /**
+     * The address currently known to work.
+     *
+     * Cached because Coil and ExoPlayer build URLs synchronously and cannot wait on a probe, and
+     * because re-testing every candidate per request would add a round trip to each thumbnail.
+     */
+    @Volatile
+    private var activeBase: String? = null
+        set(value) {
+            field = value
+            _activeEndpoint.value = value
+        }
+
+    /**
+     * The address in use right now, for screens that report it.
+     *
+     * Observable rather than a plain read, because the value changes underneath any screen showing
+     * it -- a VPN going down moves it seconds after the user last touched anything.
+     */
+    private val _activeEndpoint = MutableStateFlow<String?>(null)
+    val activeEndpoint: StateFlow<String?> = _activeEndpoint.asStateFlow()
+
+    /**
+     * How many consecutive sweeps found nothing, and when the last one ended.
+     *
+     * A transport failure drops the cached address, so while the library is unreachable every single
+     * request triggers a fresh sweep of every candidate. With six addresses at two seconds each that
+     * is twelve seconds of radio per attempt, repeating for as long as the outage lasts -- which is
+     * precisely when the phone is least likely to be on a charger.
+     */
+    @Volatile
+    private var failedSweeps = 0
+
+    @Volatile
+    private var lastFailedSweepAt = 0L
+
+    /** Why the last request failed. Without this, every network problem looks identical. */
+    @Volatile
+    var lastError: String? = null
+        private set
+
+    fun baseUrl(): String {
+        val lib = followTarget()
+        return activeBase ?: lib.baseUrl(prefs.port)
+    }
+
+    /**
+     * Picks the first candidate that answers.
+     *
+     * The address this client paired against is tried first, then the others the server advertised,
+     * in the order it listed them. So a phone paired over a VPN keeps using that path even at home,
+     * where the LAN address would be a shorter route -- correct, but not the fastest one available.
+     * Changing that means deciding whether a cleartext LAN address should win over a pinned one,
+     * which is a security question rather than a routing one, so it is left alone deliberately.
+     *
+     * Probes run with a short timeout: an address that is not on this network fails fast by design,
+     * and waiting the full request timeout on each would make startup feel broken. The cost of an
+     * unreachable first candidate is therefore one short timeout, not a hang.
+     */
+    suspend fun resolveEndpoint(): String {
+        val lib = followTarget()
+        activeBase?.let { return it }
+        val candidates = buildList {
+            lib.url?.let { add(it) }
+            addAll(lib.candidates)
+        }.distinct()
+        if (candidates.isEmpty()) return lib.baseUrl(prefs.port)
+
+        val quietFor = backoffMillis()
+        if (failedSweeps > 0 && System.currentTimeMillis() - lastFailedSweepAt < quietFor) {
+            // Still inside the quiet period after a sweep that found nothing. Returning the
+            // preferred address without probing keeps error messages naming something meaningful
+            // while the radio stays idle.
+            return candidates.first()
+        }
+
+        for (candidate in candidates) {
+            if (reachable(candidate)) {
+                failedSweeps = 0
+                activeBase = candidate
+                // Logged on every successful probe, not only on a change. When the question is
+                // "which way is it talking to the library right now", inferring it from which
+                // requests failed is guesswork, and this is one line.
+                android.util.Log.i("gpic", "library reachable at $candidate")
+                return candidate
+            }
+            android.util.Log.i("gpic", "no answer from $candidate")
+        }
+        // Nothing answered. Keep the preferred address so the error names something meaningful.
+        failedSweeps++
+        lastFailedSweepAt = System.currentTimeMillis()
+        android.util.Log.w(
+            "gpic",
+            "no candidate answered; ${candidates.size} tried, " +
+                "not sweeping again for ${backoffMillis() / 1000}s",
+        )
+        return candidates.first()
+    }
+
+    /**
+     * Forces the next call to re-probe, e.g. after moving between networks.
+     *
+     * Also clears the backoff, because every caller of this is a reason to believe the answer has
+     * changed -- the user asked, or the network did something. Making them wait out a quiet period
+     * earned by earlier failures would defeat the point of asking.
+     */
+    fun invalidateEndpoint() {
+        activeBase = null
+        failedSweeps = 0
+    }
+
+    /**
+     * How long to stay quiet after a sweep that found nothing: 2s, 4s, 8s, 16s, then 30s.
+     *
+     * Capped rather than unbounded, since the app should still notice unaided when a network comes
+     * back -- the cap is what keeps an unattended phone from taking minutes to recover.
+     */
+    private fun backoffMillis(): Long = when {
+        failedSweeps <= 0 -> 0L
+        else -> ((1L shl minOf(failedSweeps, 5)) * 1_000L).coerceAtMost(30_000L)
+    }
+
+    /**
+     * Drops the cached address when a failure says it is no longer reachable.
+     *
+     * A connection that refuses, times out or cannot resolve means the address itself is wrong now
+     * -- a VPN went away, the phone moved, the server changed address. Without this the app keeps
+     * dialling it until something else forces a re-probe, and every request fails the same way for
+     * as long as that takes.
+     *
+     * An HTTP status is deliberately not treated this way. A 401 or a 500 proves the address is
+     * right and something else is wrong, and re-probing would hide the real problem behind a
+     * changing endpoint.
+     */
+    private fun noteTransportFailure(t: Throwable) {
+        val name = t.javaClass.simpleName
+        val transport = t is java.io.IOException ||
+            name.contains("Timeout", ignoreCase = true) ||
+            name.contains("Connect", ignoreCase = true) ||
+            name.contains("UnresolvedAddress", ignoreCase = true)
+        // Deliberately does not touch failedSweeps: this is the very churn the backoff exists to
+        // damp, so letting it reset the counter would make the backoff unreachable.
+        if (transport) activeBase = null
+    }
+
+    private suspend fun reachable(base: String): Boolean = try {
+        val r = client.get("$base/health") {
+            // The connect timeout is the one that matters, and it has to be overridden explicitly:
+            // the shared client allows ten seconds, which is right for a request that is going to
+            // succeed and far too long for a probe that is expected to fail. An address on a network
+            // this phone is no longer attached to hangs until the TCP attempt gives up, so with the
+            // inherited value a single dead candidate stalled failover for ten seconds.
+            timeout {
+                connectTimeoutMillis = 2_000
+                requestTimeoutMillis = 2_500
+                socketTimeoutMillis = 2_500
+            }
+        }
+        r.status.isSuccess()
+    } catch (t: Throwable) {
+        false
+    }
+
+    /**
+     * Learns the server's other addresses so a later move to another network still works.
+     *
+     * The response is an object wrapping the list, not a bare list. It used to be a bare list, and
+     * when the TLS work added a fingerprint alongside it the shape changed here without this call
+     * being updated -- so every response failed to deserialise, the failure was swallowed as "no
+     * endpoints", and the candidate list stayed empty. A client paired over one address then had
+     * exactly that address to try and no way back when it stopped working, which read as the server
+     * being down rather than as a client that had never learned where else to look.
+     *
+     * The fingerprint in the response is deliberately ignored. A pin has to arrive out of band -- it
+     * comes from the pairing QR -- because accepting one from the server being authenticated is
+     * circular and would let any server that answered nominate its own identity.
+     */
+    suspend fun refreshEndpoints() {
+        val found = getOrNull<EndpointsDto>("/api/v1/endpoints") ?: run {
+            android.util.Log.w("gpic", "could not learn the server's other addresses: $lastError")
+            return
+        }
+        val urls = found.endpoints.map { it.url }.filterNot { it.contains("127.0.0.1") }
+        if (urls.isNotEmpty()) {
+            prefs.updateCandidates(target().id, urls)
+            android.util.Log.i("gpic", "learned ${urls.size} candidate addresses")
+        }
+    }
+
+    fun thumbUrl(assetId: Long, size: String = "grid"): String =
+        "${baseUrl()}/api/v1/assets/$assetId/thumb?size=$size"
+
+    fun originalUrl(assetId: Long): String = "${baseUrl()}/api/v1/assets/$assetId/original"
+
+    /** Coil and ExoPlayer both need this, since thumbnails and originals are authenticated too. */
+    fun authHeader(): String = "Bearer ${target().token}"
+
+    /** The library this client is talking to right now. */
+    fun library(): Library = target()
+
+    suspend fun health(): HealthDto? = getOrNull("/health")
+
+    suspend fun stats(): StatsDto? = getOrNull("/api/v1/stats")
+
+    suspend fun timeline(cursor: String?, limit: Int = 200): TimelineDto? =
+        getOrNull("/api/v1/timeline") {
+            parameter("limit", limit)
+            if (cursor != null) parameter("cursor", cursor)
+        }
+
+    suspend fun buckets(): List<BucketDto> = getOrNull<List<BucketDto>>("/api/v1/timeline/buckets") ?: emptyList()
+
+    suspend fun asset(id: Long): AssetDetailDto? = getOrNull("/api/v1/assets/$id")
+
+    suspend fun setFavorite(id: Long, favorite: Boolean): Boolean = try {
+        client.patch("${baseUrl()}/api/v1/assets/$id") {
+            auth()
+            contentType(ContentType.Application.Json)
+            setBody(AssetPatchDto(favorite = favorite))
+        }.status.isSuccess()
+    } catch (t: Throwable) {
+        lastError = "${t.javaClass.simpleName}: ${t.message}"
+        false
+    }
+
+    suspend fun trashAsset(id: Long): Boolean = try {
+        client.patch("${baseUrl()}/api/v1/assets/$id") {
+            auth()
+            contentType(ContentType.Application.Json)
+            setBody(AssetPatchDto(deleted = true))
+        }.status.isSuccess()
+    } catch (t: Throwable) {
+        lastError = "${t.javaClass.simpleName}: ${t.message}"
+        false
+    }
+
+    // ---------------------------------------------------------------- upload
+
+    /**
+     * Asks which of these hashes the library already holds.
+     *
+     * This is what makes continuous backup cheap: a client re-offering its whole camera roll pays
+     * one small round trip per batch instead of re-uploading everything it cannot remember sending.
+     */
+    suspend fun knownHashes(hashes: List<String>): Map<String, Long> {
+        if (hashes.isEmpty()) return emptyMap()
+        return try {
+            val r = client.post("${baseUrl()}/api/v1/upload/check") {
+                auth()
+                contentType(ContentType.Application.Json)
+                setBody(HashCheckDto(hashes))
+            }
+            if (r.status.isSuccess()) r.body<HashCheckResultDto>().ids else emptyMap()
+        } catch (t: Throwable) {
+            lastError = "${t.javaClass.simpleName}: ${t.message}"
+            emptyMap()
+        }
+    }
+
+    /**
+     * Offers a capture date the client knows from MediaStore. The server applies it only if what it
+     * holds is weaker, so this repairs historical mistakes without ever degrading a good date.
+     */
+    suspend fun offerCapturedAt(assetId: Long, capturedAt: Long): Boolean = try {
+        client.patch("${baseUrl()}/api/v1/assets/$assetId") {
+            auth()
+            contentType(ContentType.Application.Json)
+            setBody(AssetPatchDto(capturedAt = capturedAt, capturedAtSource = 2))
+        }.status.isSuccess()
+    } catch (t: Throwable) {
+        false
+    }
+
+    suspend fun uploadInit(
+        name: String,
+        size: Long,
+        sha256: String,
+        capturedAt: Long?,
+        sourceAlbum: String? = null,
+    ): UploadInitResultDto? =
+        try {
+            val r = client.post("${baseUrl()}/api/v1/upload/init") {
+                auth()
+                contentType(ContentType.Application.Json)
+                setBody(UploadInitDto(name, size, sha256, capturedAt, sourceAlbum))
+            }
+            if (r.status.isSuccess()) r.body<UploadInitResultDto>() else null
+        } catch (t: Throwable) {
+            lastError = "${t.javaClass.simpleName}: ${t.message}"
+            null
+        }
+
+    /** Returns the server's offset after the chunk, or null on failure. */
+    suspend fun uploadChunk(uploadId: String, offset: Long, bytes: ByteArray, length: Int): Long? = try {
+        val r = client.patch("${baseUrl()}/api/v1/upload/$uploadId") {
+            auth()
+            parameter("offset", offset)
+            setBody(if (length == bytes.size) bytes else bytes.copyOf(length))
+        }
+        when {
+            r.status.isSuccess() -> r.body<UploadStatusDto>().offset
+            // 409 carries the server's real offset, so a desynced client can resume rather than
+            // restart the whole transfer.
+            r.status.value == 409 -> r.body<UploadStatusDto>().offset
+            else -> null
+        }
+    } catch (t: Throwable) {
+        lastError = "${t.javaClass.simpleName}: ${t.message}"
+        null
+    }
+
+    suspend fun uploadOffset(uploadId: String): Long? =
+        getOrNull<UploadStatusDto>("/api/v1/upload/$uploadId")?.offset
+
+    suspend fun uploadFinish(uploadId: String): UploadFinishDto? = try {
+        val r = client.post("${baseUrl()}/api/v1/upload/$uploadId/finish") { auth() }
+        if (r.status.isSuccess()) {
+            r.body<UploadFinishDto>()
+        } else {
+            lastError = "finish: HTTP ${r.status.value}"
+            null
+        }
+    } catch (t: Throwable) {
+        lastError = "${t.javaClass.simpleName}: ${t.message}"
+        null
+    }
+
+    /** Bulk op over a selection: trash, restore, favorite, unfavorite, purge. */
+    suspend fun batch(ids: List<Long>, op: String): Int = try {
+        val r = client.post("${baseUrl()}/api/v1/assets/batch") {
+            auth()
+            contentType(ContentType.Application.Json)
+            setBody(BatchDto(ids, op))
+        }
+        if (r.status.isSuccess()) r.body<BatchResultDto>().affected else 0
+    } catch (t: Throwable) {
+        lastError = "${t.javaClass.simpleName}: ${t.message}"
+        0
+    }
+
+    suspend fun sources(): List<SourceDto> = getOrNull<List<SourceDto>>("/api/v1/sources") ?: emptyList()
+
+    suspend fun trash(): List<TrashItemDto> = getOrNull<List<TrashItemDto>>("/api/v1/trash") ?: emptyList()
+
+    suspend fun batchBySource(album: String, op: String): Int = try {
+        val r = client.post("${baseUrl()}/api/v1/assets/batch") {
+            auth()
+            contentType(ContentType.Application.Json)
+            setBody(BatchDto(op = op, sourceAlbum = album))
+        }
+        if (r.status.isSuccess()) r.body<BatchResultDto>().affected else 0
+    } catch (t: Throwable) {
+        lastError = "${t.javaClass.simpleName}: ${t.message}"
+        0
+    }
+
+    suspend fun emptyTrash(): Int = try {
+        val r = client.post("${baseUrl()}/api/v1/trash/empty") { auth() }
+        if (r.status.isSuccess()) r.body<BatchResultDto>().affected else 0
+    } catch (t: Throwable) {
+        lastError = "${t.javaClass.simpleName}: ${t.message}"
+        0
+    }
+
+    suspend fun requestScan(): Boolean = try {
+        client.post("${baseUrl()}/api/v1/scan") { auth() }.status.isSuccess()
+    } catch (t: Throwable) {
+        false
+    }
+
+    private suspend inline fun <reified T> getOrNull(
+        path: String,
+        crossinline configure: io.ktor.client.request.HttpRequestBuilder.() -> Unit = {},
+    ): T? = try {
+        val response: HttpResponse = client.get("${baseUrl()}$path") {
+            header(HttpHeaders.Authorization, authHeader())
+            configure()
+        }
+        if (response.status.isSuccess()) {
+            lastError = null
+            response.body<T>()
+        } else {
+            lastError = "HTTP ${response.status.value} from $path"
+            null
+        }
+    } catch (t: Throwable) {
+        lastError = "${t.javaClass.simpleName}: ${t.message}"
+        noteTransportFailure(t)
+        android.util.Log.w("gpic", "api $path failed", t)
+        null
+    }
+
+    private fun io.ktor.client.request.HttpRequestBuilder.auth() {
+        header(HttpHeaders.Authorization, authHeader())
+    }
+}
+
+// ---------------------------------------------------------------- wire types
+// Deliberately mirrors the server's DTOs. ignoreUnknownKeys means a newer server can add fields
+// without breaking an older client -- which will matter once the two are updated separately.
+
+@Serializable
+data class TimelineItemDto(
+    val id: Long,
+    val mime: String = "",
+    val mediaType: Int = 0,
+    val width: Int? = null,
+    val height: Int? = null,
+    val orientation: Int = 0,
+    val capturedAt: Long = 0,
+    val tzOffsetMinutes: Int? = null,
+    val durationMs: Long? = null,
+    val favorite: Boolean = false,
+    val blurhash: String? = null,
+    val isVideo: Boolean = false,
+) {
+    /** Falls back to square so a missing dimension cannot break the row solver. */
+    val aspectRatio: Float
+        get() {
+            val w = width ?: return 1f
+            val h = height ?: return 1f
+            if (w <= 0 || h <= 0) return 1f
+            return (w.toFloat() / h).coerceIn(0.4f, 3.5f)
+        }
+}
+
+@Serializable
+data class TimelineDto(
+    val items: List<TimelineItemDto> = emptyList(),
+    val nextCursor: String? = null,
+    val hasMore: Boolean = false,
+)
+
+@Serializable
+data class BatchDto(
+    val ids: List<Long> = emptyList(),
+    val op: String = "",
+    val sourceAlbum: String? = null,
+)
+
+@Serializable
+data class SourceDto(val album: String = "", val count: Int = 0, val bytes: Long = 0)
+
+@Serializable
+data class TrashItemDto(
+    val id: Long,
+    val mime: String = "",
+    val byteSize: Long = 0,
+    val capturedAt: Long = 0,
+    val deletedAt: Long = 0,
+    val blurhash: String? = null,
+    val sourceAlbum: String? = null,
+)
+
+@Serializable
+data class BatchResultDto(val affected: Int = 0, val op: String = "")
+
+@Serializable
+data class HashCheckDto(val hashes: List<String> = emptyList())
+
+@Serializable
+data class HashCheckResultDto(
+    val known: List<String> = emptyList(),
+    val ids: Map<String, Long> = emptyMap(),
+)
+
+@Serializable
+data class UploadInitDto(
+    val name: String,
+    val size: Long,
+    val sha256: String? = null,
+    val capturedAt: Long? = null,
+    val sourceAlbum: String? = null,
+)
+
+@Serializable
+data class UploadInitResultDto(
+    val uploadId: String? = null,
+    val offset: Long = 0,
+    val duplicate: Boolean = false,
+    val assetId: Long? = null,
+)
+
+@Serializable
+data class UploadStatusDto(val uploadId: String = "", val offset: Long = 0)
+
+@Serializable
+data class UploadFinishDto(val assetId: Long, val duplicate: Boolean = false, val relPath: String? = null)
+
+@Serializable
+data class AssetPatchDto(
+    val favorite: Boolean? = null,
+    val deleted: Boolean? = null,
+    val capturedAt: Long? = null,
+    val capturedAtSource: Int? = null,
+    val tzOffsetMinutes: Int? = null,
+)
+
+@Serializable
+data class EndpointDto(val label: String = "", val url: String = "", val secure: Boolean = false)
+
+/** Mirrors the server's reply shape; see [LibraryApi.refreshEndpoints] for why that matters. */
+@Serializable
+data class EndpointsDto(
+    val endpoints: List<EndpointDto> = emptyList(),
+    val tlsFingerprint: String? = null,
+)
+
+@Serializable
+data class BucketDto(val bucket: String, val count: Int, val newestCapturedAt: Long)
+
+@Serializable
+data class AssetDetailDto(
+    val id: Long,
+    val contentHash: String = "",
+    val mime: String = "",
+    val mediaType: Int = 0,
+    val byteSize: Long = 0,
+    val width: Int? = null,
+    val height: Int? = null,
+    val orientation: Int = 0,
+    val durationMs: Long? = null,
+    val capturedAt: Long = 0,
+    val capturedAtSource: Int = 5,
+    val tzOffsetMinutes: Int? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val cameraMake: String? = null,
+    val cameraModel: String? = null,
+    val blurhash: String? = null,
+    val favorite: Boolean = false,
+    val relPath: String? = null,
+    val present: Boolean = true,
+)
+
+@Serializable
+data class StatsDto(
+    val assets: Int = 0,
+    val trashed: Int = 0,
+    val libraryBytes: Long = 0,
+    val fingerprints: Int = 0,
+    val missingFiles: Int = 0,
+    val gridThumbs: Int = 0,
+    val previewThumbs: Int = 0,
+    val thumbCacheBytes: Long = 0,
+    val pendingJobs: Int = 0,
+    val blockedJobs: Int = 0,
+    val failedJobs: Int = 0,
+)
+
+@Serializable
+data class HealthDto(
+    val ok: Boolean = false,
+    val version: String = "",
+    val uptimeS: Long = 0,
+    val backend: String = "",
+    val label: String = "",
+    val mounted: Boolean = false,
+    val writable: Boolean = false,
+    val availableBytes: Long? = null,
+    val totalBytes: Long? = null,
+    val openFds: Int = 0,
+)
