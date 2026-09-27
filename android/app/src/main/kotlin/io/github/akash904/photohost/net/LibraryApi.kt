@@ -2,7 +2,14 @@ package io.github.akash904.photohost.net
 
 import io.github.akash904.photohost.core.Library
 import io.github.akash904.photohost.core.Prefs
+import io.ktor.client.request.prepareGet
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.http.contentLength
+import io.ktor.utils.io.jvm.javaio.toInputStream
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.joinAll
@@ -473,6 +480,51 @@ class LibraryApi(
     } catch (t: Throwable) {
         failed(t)
         null
+    }
+
+    /**
+     * Streams an original into [dest], calling [onProgress] with bytes so far and the total when
+     * the server gives one. True when the whole file arrived.
+     *
+     * The request timeout is lifted for this call only: the client's 30 seconds suits API calls,
+     * and would cut off a video of a few hundred megabytes on an ordinary Wi-Fi link. A stalled
+     * connection is still caught, by the socket timeout.
+     */
+    suspend fun downloadOriginal(assetId: Long, dest: java.io.File, onProgress: (Long, Long?) -> Unit): Boolean = try {
+        client.prepareGet("${base()}/api/v1/assets/$assetId/original") {
+            auth()
+            timeout {
+                requestTimeoutMillis = io.ktor.client.plugins.HttpTimeoutConfig.INFINITE_TIMEOUT_MS
+                socketTimeoutMillis = 60_000
+            }
+        }.execute { response ->
+            if (!response.status.isSuccess()) {
+                lastError = "HTTP ${response.status.value} fetching the original"
+                return@execute false
+            }
+            val total = response.contentLength()
+            val input = response.bodyAsChannel().toInputStream()
+            withContext(Dispatchers.IO) {
+                dest.outputStream().use { out ->
+                    val buffer = ByteArray(64 * 1024)
+                    var done = 0L
+                    while (true) {
+                        ensureActive() // Cancel in the UI stops the copy between chunks
+                        val n = input.read(buffer)
+                        if (n < 0) break
+                        out.write(buffer, 0, n)
+                        done += n
+                        onProgress(done, total)
+                    }
+                }
+            }
+            total == null || dest.length() == total
+        }
+    } catch (c: kotlinx.coroutines.CancellationException) {
+        throw c
+    } catch (t: Throwable) {
+        failed(t)
+        false
     }
 
     suspend fun uploadOffset(uploadId: String): Long? =

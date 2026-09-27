@@ -1,5 +1,6 @@
 package io.github.akash904.photohost.ui.screen
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -21,6 +23,8 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -32,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +49,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -57,11 +63,17 @@ import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import io.github.akash904.photohost.R
 import io.github.akash904.photohost.media.BlurHashDecoder
 import io.github.akash904.photohost.net.AssetDetailDto
 import io.github.akash904.photohost.net.LibraryApi
 import io.github.akash904.photohost.net.TimelineItemDto
 import io.github.akash904.photohost.ui.JustifiedGrid
+import io.github.akash904.photohost.ui.Share
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Full-screen viewer.
@@ -96,7 +108,46 @@ fun ViewerScreen(
     var infoVisible by remember { mutableStateOf(false) }
     var detail by remember { mutableStateOf<AssetDetailDto?>(null) }
 
+    // Bytes fetched so far and the total, while an original is being fetched to share; null
+    // otherwise. Sharing needs the full-quality file, and a video can take a while.
+    var sharing by remember { mutableStateOf<Pair<Long, Long?>?>(null) }
+    var shareJob by remember { mutableStateOf<Job?>(null) }
+    val scope = rememberCoroutineScope()
+
     val current = items.getOrNull(pagerState.currentPage)
+
+    fun share(item: TimelineItemDto) {
+        if (shareJob?.isActive == true) return
+        shareJob = scope.launch {
+            sharing = 0L to null
+            try {
+                val info = detail?.takeIf { it.id == item.id } ?: api.asset(item.id)
+                val mime = info?.mime?.takeIf { it.isNotBlank() } ?: item.mime
+                val file = withContext(Dispatchers.IO) {
+                    Share.freshFile(context, Share.fileName(info?.relPath, mime, item.id))
+                }
+                var shown = 0L
+                val ok = api.downloadOriginal(item.id, file) { done, total ->
+                    // Every 256 KB, not every 64 KB chunk: recomposing per chunk is wasted work.
+                    if (done - shown >= 256 * 1024 || done == total) {
+                        shown = done
+                        sharing = done to total
+                    }
+                }
+                if (ok) {
+                    Share.launch(context, file, mime)
+                } else {
+                    Toast.makeText(
+                        context,
+                        "Could not fetch the original to share: ${api.lastError ?: "unknown error"}",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+            } finally {
+                sharing = null
+            }
+        }
+    }
 
     // Media3 fetches the original over HTTP, so it needs the same bearer token every other
     // request carries. One player for the whole viewer: creating one per page would churn codecs.
@@ -171,7 +222,8 @@ fun ViewerScreen(
                             }
                         },
                         update = { it.player = player },
-                        modifier = Modifier.fillMaxSize(),
+                        // Clear of the top bar, so it never covers the top of the picture.
+                        modifier = Modifier.fillMaxSize().padding(top = 48.dp),
                     )
                 } else {
                     val placeholder = remember(item.blurhash) {
@@ -243,29 +295,44 @@ fun ViewerScreen(
             }
         }
 
+        // Icons only. Words for Close, favourite, Share and Info left the date so little room that
+        // it wrapped onto three lines; the date and time now head the Info panel instead.
         if (chromeVisible) {
             Row(
                 Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
                     .background(Color.Black.copy(alpha = 0.35f))
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .padding(horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TextButton(onClick = onClose) { Text("Close", color = Color.White) }
-                Text(
-                    text = current?.let { "${JustifiedGrid.labelFor(it)}  ${JustifiedGrid.timeOf(it)}" }.orEmpty(),
-                    color = Color.White,
-                    fontSize = 12.sp,
-                    modifier = Modifier.weight(1f).padding(start = 8.dp),
-                )
+                IconButton(onClick = onClose) {
+                    Icon(painterResource(R.drawable.ic_back), contentDescription = "Close", tint = Color.White)
+                }
+                Spacer(Modifier.weight(1f))
                 val fav = current?.favorite == true
-                TextButton(onClick = {
-                    val item = current ?: return@TextButton
+                IconButton(onClick = {
+                    val item = current ?: return@IconButton
                     onFavoriteChanged(item.id, !item.favorite)
-                }) { Text(if (fav) "★" else "☆", color = Color.White, fontSize = 18.sp) }
-                TextButton(onClick = { infoVisible = !infoVisible }) {
-                    Text("Info", color = Color.White)
+                }) {
+                    Icon(
+                        painterResource(if (fav) R.drawable.ic_star else R.drawable.ic_star_border),
+                        contentDescription = if (fav) "Remove from favourites" else "Add to favourites",
+                        tint = Color.White,
+                    )
+                }
+                IconButton(
+                    onClick = {
+                        // A video keeps playing behind the share sheet otherwise.
+                        player.pause()
+                        current?.let { share(it) }
+                    },
+                    enabled = sharing == null,
+                ) {
+                    Icon(painterResource(R.drawable.ic_share), contentDescription = "Share", tint = Color.White)
+                }
+                IconButton(onClick = { infoVisible = !infoVisible }) {
+                    Icon(painterResource(R.drawable.ic_info), contentDescription = "Info", tint = Color.White)
                 }
             }
 
@@ -275,6 +342,29 @@ fun ViewerScreen(
                 fontSize = 12.sp,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp),
             )
+        }
+
+        sharing?.let { (done, total) ->
+            Surface(
+                modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 3.dp,
+                shape = MaterialTheme.shapes.medium,
+            ) {
+                Column(Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Preparing to share…", fontWeight = FontWeight.SemiBold)
+                    Text(
+                        if (total != null && total > 0) {
+                            "%.1f of %.1f MB".format(done / 1048576.0, total / 1048576.0)
+                        } else {
+                            "%.1f MB".format(done / 1048576.0)
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                    TextButton(onClick = { shareJob?.cancel() }) { Text("Cancel") }
+                }
+            }
         }
 
         AnimatedVisibility(
@@ -298,15 +388,19 @@ private fun InfoPanel(detail: AssetDetailDto?, item: TimelineItemDto?) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            // The date and time head the panel: they left the top bar to make room for its icons,
+            // and are known from the timeline without waiting for the details to load.
+            item?.let {
+                Text(JustifiedGrid.labelFor(it), style = MaterialTheme.typography.titleMedium)
+                Text(
+                    JustifiedGrid.timeOf(it),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             if (detail == null) {
                 Text("Loading…", style = MaterialTheme.typography.bodySmall)
                 return@Column
-            }
-            item?.let {
-                Text(
-                    "${JustifiedGrid.labelFor(it)} · ${JustifiedGrid.timeOf(it)}",
-                    fontWeight = FontWeight.SemiBold,
-                )
             }
             // Provenance is surfaced, not hidden: a date guessed from a filename should not look
             // as authoritative as one the camera actually recorded.
