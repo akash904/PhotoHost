@@ -155,6 +155,26 @@ class LibraryApi(
     }
 
     /**
+     * The address for a request that can wait for a probe: the working one already found, or the
+     * first candidate that answers now.
+     *
+     * Every suspending call goes through this rather than [baseUrl], which only returns what a probe
+     * already found and otherwise falls back to the paired address. Only browsing used to probe, so
+     * the backup's own client for the same library never did and kept dialling the pairing code's
+     * primary address. Observed: a phone paired from a code whose primary was the server's Tailscale
+     * address, itself not on Tailscale, failed every upload while browsing the same library worked.
+     *
+     * [baseUrl] stays for the URLs Coil and ExoPlayer build synchronously; browsing resolves first.
+     */
+    private suspend fun base(): String = resolveEndpoint()
+
+    /** Records why a request failed, and forgets the address when the failure says it is dead. */
+    private fun failed(t: Throwable) {
+        lastError = "${t.javaClass.simpleName}: ${t.message}"
+        noteTransportFailure(t)
+    }
+
+    /**
      * Picks the first candidate that answers.
      *
      * The address this client paired against is tried first, then the others the server advertised,
@@ -323,24 +343,24 @@ class LibraryApi(
     suspend fun asset(id: Long): AssetDetailDto? = getOrNull("/api/v1/assets/$id")
 
     suspend fun setFavorite(id: Long, favorite: Boolean): Boolean = try {
-        client.patch("${baseUrl()}/api/v1/assets/$id") {
+        client.patch("${base()}/api/v1/assets/$id") {
             auth()
             contentType(ContentType.Application.Json)
             setBody(AssetPatchDto(favorite = favorite))
         }.status.isSuccess()
     } catch (t: Throwable) {
-        lastError = "${t.javaClass.simpleName}: ${t.message}"
+        failed(t)
         false
     }
 
     suspend fun trashAsset(id: Long): Boolean = try {
-        client.patch("${baseUrl()}/api/v1/assets/$id") {
+        client.patch("${base()}/api/v1/assets/$id") {
             auth()
             contentType(ContentType.Application.Json)
             setBody(AssetPatchDto(deleted = true))
         }.status.isSuccess()
     } catch (t: Throwable) {
-        lastError = "${t.javaClass.simpleName}: ${t.message}"
+        failed(t)
         false
     }
 
@@ -355,14 +375,14 @@ class LibraryApi(
     suspend fun knownHashes(hashes: List<String>): Map<String, Long> {
         if (hashes.isEmpty()) return emptyMap()
         return try {
-            val r = client.post("${baseUrl()}/api/v1/upload/check") {
+            val r = client.post("${base()}/api/v1/upload/check") {
                 auth()
                 contentType(ContentType.Application.Json)
                 setBody(HashCheckDto(hashes))
             }
             if (r.status.isSuccess()) r.body<HashCheckResultDto>().ids else emptyMap()
         } catch (t: Throwable) {
-            lastError = "${t.javaClass.simpleName}: ${t.message}"
+            failed(t)
             emptyMap()
         }
     }
@@ -372,7 +392,7 @@ class LibraryApi(
      * holds is weaker, so this repairs historical mistakes without ever degrading a good date.
      */
     suspend fun offerCapturedAt(assetId: Long, capturedAt: Long): Boolean = try {
-        client.patch("${baseUrl()}/api/v1/assets/$assetId") {
+        client.patch("${base()}/api/v1/assets/$assetId") {
             auth()
             contentType(ContentType.Application.Json)
             setBody(AssetPatchDto(capturedAt = capturedAt, capturedAtSource = 2))
@@ -389,20 +409,20 @@ class LibraryApi(
         sourceAlbum: String? = null,
     ): UploadInitResultDto? =
         try {
-            val r = client.post("${baseUrl()}/api/v1/upload/init") {
+            val r = client.post("${base()}/api/v1/upload/init") {
                 auth()
                 contentType(ContentType.Application.Json)
                 setBody(UploadInitDto(name, size, sha256, capturedAt, sourceAlbum))
             }
             if (r.status.isSuccess()) r.body<UploadInitResultDto>() else null
         } catch (t: Throwable) {
-            lastError = "${t.javaClass.simpleName}: ${t.message}"
+            failed(t)
             null
         }
 
     /** Returns the server's offset after the chunk, or null on failure. */
     suspend fun uploadChunk(uploadId: String, offset: Long, bytes: ByteArray, length: Int): Long? = try {
-        val r = client.patch("${baseUrl()}/api/v1/upload/$uploadId") {
+        val r = client.patch("${base()}/api/v1/upload/$uploadId") {
             auth()
             parameter("offset", offset)
             setBody(if (length == bytes.size) bytes else bytes.copyOf(length))
@@ -415,7 +435,7 @@ class LibraryApi(
             else -> null
         }
     } catch (t: Throwable) {
-        lastError = "${t.javaClass.simpleName}: ${t.message}"
+        failed(t)
         null
     }
 
@@ -423,7 +443,7 @@ class LibraryApi(
         getOrNull<UploadStatusDto>("/api/v1/upload/$uploadId")?.offset
 
     suspend fun uploadFinish(uploadId: String): UploadFinishDto? = try {
-        val r = client.post("${baseUrl()}/api/v1/upload/$uploadId/finish") { auth() }
+        val r = client.post("${base()}/api/v1/upload/$uploadId/finish") { auth() }
         if (r.status.isSuccess()) {
             r.body<UploadFinishDto>()
         } else {
@@ -431,20 +451,20 @@ class LibraryApi(
             null
         }
     } catch (t: Throwable) {
-        lastError = "${t.javaClass.simpleName}: ${t.message}"
+        failed(t)
         null
     }
 
     /** Bulk op over a selection: trash, restore, favorite, unfavorite, purge. */
     suspend fun batch(ids: List<Long>, op: String): Int = try {
-        val r = client.post("${baseUrl()}/api/v1/assets/batch") {
+        val r = client.post("${base()}/api/v1/assets/batch") {
             auth()
             contentType(ContentType.Application.Json)
             setBody(BatchDto(ids, op))
         }
         if (r.status.isSuccess()) r.body<BatchResultDto>().affected else 0
     } catch (t: Throwable) {
-        lastError = "${t.javaClass.simpleName}: ${t.message}"
+        failed(t)
         0
     }
 
@@ -453,27 +473,27 @@ class LibraryApi(
     suspend fun trash(): List<TrashItemDto> = getOrNull<List<TrashItemDto>>("/api/v1/trash") ?: emptyList()
 
     suspend fun batchBySource(album: String, op: String): Int = try {
-        val r = client.post("${baseUrl()}/api/v1/assets/batch") {
+        val r = client.post("${base()}/api/v1/assets/batch") {
             auth()
             contentType(ContentType.Application.Json)
             setBody(BatchDto(op = op, sourceAlbum = album))
         }
         if (r.status.isSuccess()) r.body<BatchResultDto>().affected else 0
     } catch (t: Throwable) {
-        lastError = "${t.javaClass.simpleName}: ${t.message}"
+        failed(t)
         0
     }
 
     suspend fun emptyTrash(): Int = try {
-        val r = client.post("${baseUrl()}/api/v1/trash/empty") { auth() }
+        val r = client.post("${base()}/api/v1/trash/empty") { auth() }
         if (r.status.isSuccess()) r.body<BatchResultDto>().affected else 0
     } catch (t: Throwable) {
-        lastError = "${t.javaClass.simpleName}: ${t.message}"
+        failed(t)
         0
     }
 
     suspend fun requestScan(): Boolean = try {
-        client.post("${baseUrl()}/api/v1/scan") { auth() }.status.isSuccess()
+        client.post("${base()}/api/v1/scan") { auth() }.status.isSuccess()
     } catch (t: Throwable) {
         false
     }
@@ -482,7 +502,7 @@ class LibraryApi(
         path: String,
         crossinline configure: io.ktor.client.request.HttpRequestBuilder.() -> Unit = {},
     ): T? = try {
-        val response: HttpResponse = client.get("${baseUrl()}$path") {
+        val response: HttpResponse = client.get("${base()}$path") {
             header(HttpHeaders.Authorization, authHeader())
             configure()
         }
@@ -494,8 +514,7 @@ class LibraryApi(
             null
         }
     } catch (t: Throwable) {
-        lastError = "${t.javaClass.simpleName}: ${t.message}"
-        noteTransportFailure(t)
+        failed(t)
         android.util.Log.w("gpic", "api $path failed", t)
         null
     }
