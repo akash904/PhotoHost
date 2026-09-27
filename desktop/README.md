@@ -97,8 +97,14 @@ Unchanged apart from the `Log` import: `core/`, `data/entity`, `data/dao`, `jobs
 **Database parity** is checked, not assumed: `schemas/.../4.json` is identical to
 `../android/app/schemas/.../4.json`, identity hash `c98416cf5463e8ac8d563a9cdcfa0571`.
 
+## Licence
+
+PhotoHost is licensed under the GNU Affero General Public License v3.0; see `../LICENSE` and the
+root README.
+
 ## Licences of shipped dependencies
 
 Kotlin, kotlinx, Ktor, Room, androidx.sqlite (Apache-2.0); SQLite (public domain); TwelveMonkeys
-(BSD-3); metadata-extractor (Apache-2.0) and xmpcore (BSD); zxing (Apache-2.0); SLF4J (MIT).
+(BSD-3); metadata-extractor (Apache-2.0) and xmpcore (BSD); zxing (Apache-2.0); SLF4J (MIT);
+JNA (Apache-2.0, or LGPL-2.1 at the user's choice).
 The test fixture `VID_rotated.mp4` was generated with ffmpeg; ffmpeg is not a dependency.

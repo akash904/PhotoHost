@@ -89,3 +89,8 @@ specific selection once.
 Plain HTTP with a single bearer token, delivered to browsers as an `HttpOnly` cookie so no token
 ever appears in a URL, a log or a `Referer` header. That is appropriate for a LAN and for a
 Tailscale tunnel, which supplies the encryption. **Never port-forward it to the internet.**
+
+## Licence
+
+PhotoHost is licensed under the GNU Affero General Public License v3.0; see `../LICENSE` and the
+root README.
