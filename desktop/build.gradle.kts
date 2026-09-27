@@ -143,7 +143,7 @@ val packageExe = tasks.register<Exec>("packageExe") {
         "--dest", outDir.get().asFile.absolutePath,
         "--icon", iconFile.get().asFile.absolutePath,
     )
-    args("--copyright", "PhotoHost")
+    args("--copyright", "Copyright (C) 2026 Akash Verma")
     jvmFlags.forEach { args("--java-options", it) }
     // Without a cap the JVM reserves up to a quarter of the PC's RAM and, being lazy about giving it
     // back, an idle server was observed at 644 MB. Decoding is subsampled, so even a 50 MP photo

@@ -31,7 +31,7 @@ See `android/README.md` and `desktop/README.md` for details.
 
 ## Licence
 
-Copyright (C) 2026 akash904
+Copyright (C) 2026 Akash Verma
 
 PhotoHost is free software: you can redistribute it and/or modify it under the terms of the GNU
 Affero General Public License as published by the Free Software Foundation, version 3 of the

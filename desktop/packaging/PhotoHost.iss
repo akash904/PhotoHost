@@ -36,6 +36,7 @@ AppName=PhotoHost
 AppVersion={#AppVersion}
 AppVerName=PhotoHost {#AppVersion}
 AppPublisher=PhotoHost
+AppCopyright=Copyright (C) 2026 Akash Verma
 VersionInfoVersion={#AppVersion}
 VersionInfoProductName=PhotoHost
 VersionInfoDescription=PhotoHost Setup
