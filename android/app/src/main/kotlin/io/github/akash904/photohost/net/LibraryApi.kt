@@ -2,6 +2,11 @@ package io.github.akash904.photohost.net
 
 import io.github.akash904.photohost.core.Library
 import io.github.akash904.photohost.core.Prefs
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -175,17 +180,23 @@ class LibraryApi(
     }
 
     /**
-     * Picks the first candidate that answers.
+     * Picks the address to use: an encrypted one whenever any answers, and among those the fastest.
      *
-     * The address this client paired against is tried first, then the others the server advertised,
-     * in the order it listed them. So a phone paired over a VPN keeps using that path even at home,
-     * where the LAN address would be a shorter route -- correct, but not the fastest one available.
-     * Changing that means deciding whether a cleartext LAN address should win over a pinned one,
-     * which is a security question rather than a routing one, so it is left alone deliberately.
+     * Encrypted first because the plain address carries the photos and the bearer token in the
+     * clear, and the servers list plain addresses first. Taking candidates in that order put home
+     * backups on http:// although https:// to the same server answered just as well.
+     *
+     * The encrypted candidates are probed all at once and the first to answer wins. In order, one at
+     * a time, every unreachable address ahead of the right one cost a full probe timeout: a code
+     * whose primary was the server's Tailscale address made each re-probe at home, on a phone
+     * without Tailscale, wait two seconds before trying the LAN. Racing them also picks the shorter
+     * route when several work, the LAN at home rather than a VPN.
+     *
+     * Plain addresses are raced only when no encrypted one answers, so a library still works if its
+     * TLS side is down, as it did before encryption existed.
      *
      * Probes run with a short timeout: an address that is not on this network fails fast by design,
-     * and waiting the full request timeout on each would make startup feel broken. The cost of an
-     * unreachable first candidate is therefore one short timeout, not a hang.
+     * and waiting the full request timeout would make startup feel broken.
      */
     suspend fun resolveEndpoint(): String {
         val lib = followTarget()
@@ -204,17 +215,16 @@ class LibraryApi(
             return candidates.first()
         }
 
-        for (candidate in candidates) {
-            if (reachable(candidate)) {
-                failedSweeps = 0
-                activeBase = candidate
-                // Logged on every successful probe, not only on a change. When the question is
-                // "which way is it talking to the library right now", inferring it from which
-                // requests failed is guesswork, and this is one line.
-                android.util.Log.i("gpic", "library reachable at $candidate")
-                return candidate
-            }
-            android.util.Log.i("gpic", "no answer from $candidate")
+        val (secure, plain) = candidates.partition { it.startsWith("https://", ignoreCase = true) }
+        val found = firstAnswering(secure) ?: firstAnswering(plain)
+        if (found != null) {
+            failedSweeps = 0
+            activeBase = found
+            // Logged on every successful probe, not only on a change. When the question is
+            // "which way is it talking to the library right now", inferring it from which
+            // requests failed is guesswork, and this is one line.
+            android.util.Log.i("gpic", "library reachable at $found")
+            return found
         }
         // Nothing answered. Keep the preferred address so the error names something meaningful.
         failedSweeps++
@@ -273,6 +283,28 @@ class LibraryApi(
         if (transport) activeBase = null
     }
 
+    /**
+     * Probes [group] concurrently and returns the first address to answer, or null when none does.
+     * The remaining probes are cancelled as soon as one wins.
+     */
+    private suspend fun firstAnswering(group: List<String>): String? = coroutineScope {
+        if (group.isEmpty()) return@coroutineScope null
+        val winner = CompletableDeferred<String?>()
+        val probes = group.map { candidate ->
+            launch {
+                if (reachable(candidate)) winner.complete(candidate)
+                else android.util.Log.i("gpic", "no answer from $candidate")
+            }
+        }
+        launch {
+            probes.joinAll()
+            winner.complete(null)
+        }
+        val result = winner.await()
+        coroutineContext.cancelChildren()
+        result
+    }
+
     private suspend fun reachable(base: String): Boolean = try {
         val r = client.get("$base/health") {
             // The connect timeout is the one that matters, and it has to be overridden explicitly:
@@ -287,6 +319,10 @@ class LibraryApi(
             }
         }
         r.status.isSuccess()
+    } catch (c: kotlinx.coroutines.CancellationException) {
+        // A losing probe in a race, not an unreachable address: rethrown, so it neither counts as
+        // "no answer" nor keeps its coroutine running.
+        throw c
     } catch (t: Throwable) {
         false
     }
