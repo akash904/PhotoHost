@@ -70,10 +70,8 @@ import io.github.akash904.photohost.net.LibraryApi
 import io.github.akash904.photohost.net.TimelineItemDto
 import io.github.akash904.photohost.ui.JustifiedGrid
 import io.github.akash904.photohost.ui.Share
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * Full-screen viewer.
@@ -121,21 +119,9 @@ fun ViewerScreen(
         shareJob = scope.launch {
             sharing = 0L to null
             try {
-                val info = detail?.takeIf { it.id == item.id } ?: api.asset(item.id)
-                val mime = info?.mime?.takeIf { it.isNotBlank() } ?: item.mime
-                val file = withContext(Dispatchers.IO) {
-                    Share.freshFile(context, Share.fileName(info?.relPath, mime, item.id))
-                }
-                var shown = 0L
-                val ok = api.downloadOriginal(item.id, file) { done, total ->
-                    // Every 256 KB, not every 64 KB chunk: recomposing per chunk is wasted work.
-                    if (done - shown >= 256 * 1024 || done == total) {
-                        shown = done
-                        sharing = done to total
-                    }
-                }
-                if (ok) {
-                    Share.launch(context, file, mime)
+                val files = Share.fetch(context, api, listOf(item.id)) { p -> sharing = p.bytes to p.size }
+                if (files != null) {
+                    Share.launch(context, files)
                 } else {
                     Toast.makeText(
                         context,

@@ -62,6 +62,13 @@ import io.github.akash904.photohost.ui.Cell
 import io.github.akash904.photohost.ui.GridEntry
 import io.github.akash904.photohost.ui.JustifiedGrid
 import io.github.akash904.photohost.ui.LibraryViewModel
+import io.github.akash904.photohost.ui.Share
+import io.github.akash904.photohost.ui.components.MonthScroller
+import androidx.compose.runtime.derivedStateOf
+import android.widget.Toast
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import io.github.akash904.photohost.ui.components.addressLabel
 import io.github.akash904.photohost.ui.components.diagnose
 import io.github.akash904.photohost.ui.components.friendlyError
@@ -92,6 +99,38 @@ fun LibraryScreen(
     }
 
     var confirmDelete by remember { mutableStateOf(false) }
+
+    // Sharing a selection: every original is fetched in full before the share sheet opens, which
+    // for a few videos is a while, so where it has got to is shown under the selection bar.
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var sharing by remember { mutableStateOf<Share.Progress?>(null) }
+    var shareJob by remember { mutableStateOf<Job?>(null) }
+
+    fun shareSelected() {
+        if (shareJob?.isActive == true) return
+        // In the order they appear in the grid, which is the order a receiver will show them.
+        val ids = state.items.map { it.id }.filter { it in state.selected }
+        if (ids.isEmpty()) return
+        shareJob = scope.launch {
+            sharing = Share.Progress(0, ids.size, 0, null)
+            try {
+                val files = Share.fetch(context, vm.api, ids) { sharing = it }
+                if (files != null) {
+                    Share.launch(context, files)
+                    vm.clearSelection()
+                } else {
+                    Toast.makeText(
+                        context,
+                        "Could not fetch the originals to share: ${vm.api.lastError ?: "unknown error"}",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+            } finally {
+                sharing = null
+            }
+        }
+    }
 
     // Back should leave selection mode before it leaves the screen.
     BackHandler(enabled = state.selected.isNotEmpty()) { vm.clearSelection() }
@@ -146,7 +185,25 @@ fun LibraryScreen(
             )
             TextButton(onClick = { vm.selectAllLoaded() }) { Text("All") }
             TextButton(onClick = { vm.favoriteSelected(true) }) { Text("★") }
+            TextButton(onClick = { shareSelected() }, enabled = sharing == null) { Text("Share") }
             TextButton(onClick = { confirmDelete = true }) { Text("Delete") }
+        }
+    }
+    sharing?.let { p ->
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp)
+            Text(
+                "Preparing ${p.index + 1} of ${p.count} to share · %.1f MB".format(p.bytes / 1048576.0),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f).padding(start = 10.dp),
+            )
+            TextButton(onClick = { shareJob?.cancel() }) { Text("Cancel") }
         }
     }
 
@@ -300,6 +357,22 @@ fun LibraryScreen(
                         }
                     }
                   }
+                  // The month at the top of the grid: from the nearest day header at or above the
+                  // first visible row, whose key starts with the same "yyyy-MM" the months use.
+                  val topMonth by remember(entries) {
+                      derivedStateOf {
+                          var i = listState.firstVisibleItemIndex.coerceAtMost(entries.lastIndex)
+                          while (i >= 0 && entries[i] !is GridEntry.DayHeader) i--
+                          (entries.getOrNull(i) as? GridEntry.DayHeader)?.dayKey?.take(7)
+                      }
+                  }
+                  MonthScroller(
+                      buckets = state.buckets,
+                      currentMonth = topMonth,
+                      moving = listState.isScrollInProgress,
+                      onJump = { vm.jumpTo(it) },
+                      modifier = Modifier.matchParentSize(),
+                  )
                 }
             }
         }
