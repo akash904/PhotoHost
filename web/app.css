@@ -307,6 +307,8 @@ button.ghost.danger:hover { border-color: #ff6b6b; color: #ff6b6b; }
   place-items: center;
 }
 .vbtn:hover { background: rgba(0,0,0,0.7); }
+/* The share icon asking for a second tap: the browser refused a share that took too long to prepare. */
+.vbtn.ready { background: var(--accent); color: #000; }
 .vnav { top: 50%; transform: translateY(-50%); }
 
 #viewerInfo {

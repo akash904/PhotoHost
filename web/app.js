@@ -392,6 +392,9 @@ function toggleSelect(id) {
 }
 
 function clearSelection() {
+  // A selection's fetched files leave with the selection.
+  pendingShare = null;
+  document.getElementById('selShare').textContent = 'Share';
   state.selected.clear();
   state.selectMode = false;
   state.lastClickedIndex = -1;
@@ -409,6 +412,7 @@ function renderActionBar() {
   // Restore only makes sense for things already in the trash.
   document.getElementById('selRestore').classList.toggle('hidden', state.view !== 'trash');
   document.getElementById('selFav').classList.toggle('hidden', state.view === 'trash');
+  document.getElementById('selShare').classList.toggle('hidden', state.view === 'trash');
 }
 
 async function batch(op) {
@@ -457,6 +461,9 @@ function highlightScrubber() {
 
 function openViewer(index) {
   if (index < 0 || index >= state.items.length) return;
+  // Files fetched for the previous photo must not go out when Share is tapped on this one.
+  pendingShare = null;
+  document.getElementById('vShare').classList.remove('ready');
   state.viewerIndex = index;
   const item = state.items[index];
   el.viewer.classList.remove('hidden');
@@ -1109,6 +1116,176 @@ document.getElementById('vInfo').addEventListener('click', () => {
   el.viewerInfo.classList.toggle('hidden');
   if (!el.viewerInfo.classList.contains('hidden') && state.viewerIndex >= 0) {
     loadInfo(state.items[state.viewerIndex].id);
+  }
+});
+
+/*
+ * Share from the viewer.
+ *
+ * The system share sheet takes files only where the browser offers navigator.share with files --
+ * phone browsers and some desktops -- and only on a secure page (HTTPS or localhost). Everywhere
+ * else the button downloads the original instead, so it always does something useful rather than
+ * appearing broken on half the devices it is pressed on.
+ *
+ * The file is named as it was taken: the library's "-<hash>" suffix means nothing outside it.
+ */
+const shareBtn = document.getElementById('vShare');
+
+function shareName(relPath, id, mime) {
+  const stored = (relPath || '').split('/').pop();
+  if (stored) return stored.replace(/-[0-9a-f]{8}(?=\.[^.]+$)/, '');
+  const ext = (mime || '').split('/')[1] || 'bin';
+  return `PhotoHost-${id}.${ext === 'jpeg' ? 'jpg' : ext}`;
+}
+
+/*
+ * A browser opens the share sheet only within a few seconds of a tap. Fetching several originals
+ * can take longer, and then share() is refused with NotAllowedError. The fetched files are kept
+ * instead, the button asks for one more tap, and that tap -- fresh -- shares them straight away.
+ */
+let pendingShare = null;
+
+async function offerShare(files, onNeedsTap) {
+  try {
+    await navigator.share({ files });
+  } catch (e) {
+    if (e.name === 'NotAllowedError') {
+      pendingShare = files;
+      onNeedsTap();
+      return;
+    }
+    // Closing the share sheet without choosing is not an error worth reporting.
+    if (e.name !== 'AbortError') throw e;
+  }
+}
+
+/** Shares what an earlier tap fetched, if anything is waiting. True when it did. */
+async function sharePending() {
+  if (!pendingShare) return false;
+  const files = pendingShare;
+  pendingShare = null;
+  try {
+    await navigator.share({ files });
+  } catch (e) {
+    if (e.name !== 'AbortError') alert(`Could not share: ${e.message}`);
+  }
+  return true;
+}
+
+/**
+ * Shares [ids] through the system sheet in one go, or downloads them where the browser cannot
+ * share files. [onProgress] hears (done, count) as originals arrive, since several videos take a
+ * while and nothing else would show that anything is happening.
+ */
+async function shareAssets(ids, onProgress = () => {}, onNeedsTap = () => {}) {
+  // Browsers offer file sharing only on secure pages. On plain http the fallback is downloading,
+  // and doing that silently leaves someone wondering why "Share" saved files instead.
+  if (!window.isSecureContext && navigator.share) {
+    const ok = confirm(
+      'Sharing needs this page opened at its secure address (https://…:8443 — the pairing link ' +
+        'shows it). On this address the photos can only be downloaded.\n\nDownload them instead?',
+    );
+    if (!ok) return;
+  }
+
+  const details = [];
+  for (const id of ids) details.push(await api(`${API}/assets/${id}`));
+
+  // Names are made unique, or two IMG_0001.jpg from different months would clash in the sheet.
+  const used = new Set();
+  const names = details.map((d) => {
+    const base = shareName(d.relPath, d.id, d.mime);
+    let name = base;
+    for (let n = 2; used.has(name); n++) name = base.replace(/(\.[^.]+)?$/, ` (${n})$1`);
+    used.add(name);
+    return name;
+  });
+
+  if (navigator.canShare) {
+    const files = [];
+    for (let i = 0; i < details.length; i++) {
+      onProgress(i, details.length);
+      const r = await fetch(`${API}/assets/${details[i].id}/original`);
+      if (!r.ok) throw new Error(`original -> ${r.status}`);
+      files.push(new File([await r.blob()], names[i], { type: details[i].mime || 'application/octet-stream' }));
+    }
+    onProgress(details.length, details.length);
+    if (navigator.canShare({ files })) {
+      await offerShare(files, onNeedsTap);
+      return;
+    }
+  }
+
+  // No file sharing here: download each instead. A short pause between them, because browsers
+  // treat a burst of downloads from one click as suspicious and drop all but the first.
+  for (let i = 0; i < details.length; i++) {
+    onProgress(i, details.length);
+    const a = document.createElement('a');
+    a.href = `${API}/assets/${details[i].id}/original?download=1`;
+    a.download = names[i];
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    if (i < details.length - 1) await new Promise((r) => setTimeout(r, 400));
+  }
+}
+
+shareBtn.addEventListener('click', async () => {
+  if (state.viewerIndex < 0 || shareBtn.disabled) return;
+  if (await sharePending()) {
+    shareBtn.classList.remove('ready');
+    return;
+  }
+  const item = state.items[state.viewerIndex];
+  const vid = el.viewerMedia.querySelector('video');
+  if (vid) vid.pause();
+  shareBtn.disabled = true;
+  try {
+    await shareAssets([item.id], undefined, () => {
+      // The icon has no room for words; it lights up, and the tooltip says what it wants.
+      shareBtn.classList.add('ready');
+      shareBtn.title = 'Ready — tap to share';
+    });
+  } catch (e) {
+    console.error(e);
+    alert(`Could not share this photo: ${e.message}`);
+  } finally {
+    shareBtn.disabled = false;
+  }
+});
+
+document.getElementById('selShare').addEventListener('click', async (ev) => {
+  const btn = ev.currentTarget;
+  if (btn.disabled) return;
+  if (await sharePending()) {
+    btn.textContent = 'Share';
+    clearSelection();
+    return;
+  }
+  // In the order they appear in the grid, which is the order a receiver will show them.
+  const ids = state.items.map((it) => it.id).filter((id) => state.selected.has(id));
+  if (!ids.length) return;
+  btn.disabled = true;
+  let waiting = false;
+  try {
+    await shareAssets(
+      ids,
+      (done, count) => {
+        el.selCount.textContent = done < count ? `Preparing ${done + 1} of ${count}…` : `${count} selected`;
+      },
+      () => {
+        waiting = true;
+        btn.textContent = 'Tap to share';
+      },
+    );
+    // Kept selected while a second tap is awaited, so the bar and its button stay on screen.
+    if (!waiting) clearSelection();
+  } catch (e) {
+    console.error(e);
+    alert(`Could not share these photos: ${e.message}`);
+    renderActionBar();
+  } finally {
+    btn.disabled = false;
   }
 });
 
