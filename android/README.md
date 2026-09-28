@@ -86,9 +86,23 @@ specific selection once.
 
 ## Security
 
-Plain HTTP with a single bearer token, delivered to browsers as an `HttpOnly` cookie so no token
-ever appears in a URL, a log or a `Referer` header. That is appropriate for a LAN and for a
-Tailscale tunnel, which supplies the encryption. **Never port-forward it to the internet.**
+- **Every request needs the library's token.** It travels in the pairing code. The app sends it as a
+  bearer token; a browser gets it once through the pairing link and then holds it as an `HttpOnly`
+  cookie, so it never appears in a URL, a log or a `Referer` header. Repeated wrong tokens from one
+  address are throttled.
+- **Encrypted, with the certificate pinned.** Each library serves TLS on its port + 363 (8443 by
+  default) with its own self-signed certificate. The pairing code carries the certificate's SHA-256
+  fingerprint, and the app trusts that certificate and nothing else, so no certificate authority is
+  involved and a man in the middle is refused. The app tries encrypted addresses first and uses
+  plain HTTP only when none answers. Browsers warn about the certificate once.
+- **Plain HTTP on 8080 remains** for browsers on the local network and as a fallback. It carries the
+  token and photos unencrypted, which is why it should only ever be reachable on your own network.
+- **Only sensible addresses are advertised:** Wi-Fi (including the phone's own hotspot), Ethernet
+  and Tailscale. Mobile-data and other VPN addresses are never offered.
+- **Away from home, use Tailscale.** It encrypts end to end and exposes nothing to the internet. The
+  optional *Remote access* setting instead asks the router (UPnP, PCP or NAT-PMP) to open the
+  encrypted port only. **Never forward the plain port 8080.**
+- **Requests cannot leave the library:** file paths are confined to the library folder.
 
 ## Licence
 
