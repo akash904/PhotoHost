@@ -395,6 +395,17 @@ class HttpServer(
                     call.respond(HashCheckResultDto(known = ids.keys.toList(), ids = ids))
                 }
 
+                // Asked by a phone before it deletes its own copies to free space: which of these
+                // does this library hold safely right now? Stricter than upload/check; see
+                // UploadService.safeHashes. A server without this route answers 404, and the client
+                // then refuses to delete anything rather than fall back to the weaker check.
+                post("/api/v1/verify") {
+                    if (call.denied()) return@post
+                    val body = runCatching { call.receive<HashCheckDto>() }.getOrNull()
+                        ?: return@post call.respond(HttpStatusCode.BadRequest, "bad body")
+                    call.respond(VerifyResultDto(safe = uploads.safeHashes(body.hashes)))
+                }
+
                 post("/api/v1/upload/init") {
                     if (call.denied()) return@post
                     val body = runCatching { call.receive<UploadInitDto>() }.getOrNull()
@@ -799,6 +810,9 @@ data class HashCheckDto(val hashes: List<String> = emptyList())
 
 @Serializable
 data class HashCheckResultDto(val known: List<String>, val ids: Map<String, Long> = emptyMap())
+
+@Serializable
+data class VerifyResultDto(val safe: List<String>)
 
 @Serializable
 data class UploadInitDto(

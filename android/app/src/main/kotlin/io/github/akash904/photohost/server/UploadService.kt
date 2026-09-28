@@ -7,6 +7,8 @@ import io.github.akash904.photohost.index.IndexResult
 import io.github.akash904.photohost.index.LibraryIndexer
 import io.github.akash904.photohost.storage.LibraryStore
 import io.github.akash904.photohost.storage.joinRel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -65,6 +67,32 @@ class UploadService(
         val out = LinkedHashMap<String, Long>()
         for (h in hashes.distinct()) {
             db.assets().byHash(h)?.let { out[h] = it.id }
+        }
+        return out
+    }
+
+    /**
+     * Which of [hashes] this library holds safely right now: the question a phone asks before it
+     * deletes its own copies to free space, so every clause errs towards "no".
+     *
+     * Safe means an asset with exactly these bytes, not in the trash (a trashed asset is on its way
+     * to being purged), with a canonical file that is not marked missing, and that file present on
+     * the store at this moment at the recorded size. The last check is live, not from the index: a
+     * library on a USB drive that has been unplugged still has every row, and none of the files.
+     *
+     * [knownIds] answers a different question -- "is there any point uploading this?" -- and says yes
+     * for trashed and unreachable assets alike, which is right for backup and wrong here.
+     */
+    suspend fun safeHashes(hashes: List<String>): List<String> {
+        val out = ArrayList<String>()
+        for (h in hashes.distinct()) {
+            val asset = db.assets().byHash(h.lowercase()) ?: continue
+            if (asset.deletedAt != null) continue
+            val file = db.assetFiles().canonical(asset.id) ?: continue
+            val onDisk = withContext(Dispatchers.IO) { runCatching { store.stat(file.relPath) }.getOrNull() }
+                ?: continue
+            if (onDisk.isDirectory || onDisk.size != asset.byteSize) continue
+            out += h
         }
         return out
     }

@@ -52,6 +52,9 @@ data class HashCheckResultDto(
 )
 
 @Serializable
+data class VerifyResultDto(val safe: List<String> = emptyList())
+
+@Serializable
 data class UploadInitDto(
     val name: String,
     val size: Long,

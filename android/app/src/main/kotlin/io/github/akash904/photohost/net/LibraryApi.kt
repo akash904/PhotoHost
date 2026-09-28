@@ -430,6 +430,44 @@ class LibraryApi(
         }
     }
 
+    sealed interface VerifyOutcome {
+        /** The library answered: exactly these hashes are held safely right now. */
+        data class Checked(val safe: Set<String>) : VerifyOutcome
+
+        /** A library too old to have the check. Nothing may be deleted on its word. */
+        data object Unsupported : VerifyOutcome
+
+        data class Failed(val error: String) : VerifyOutcome
+    }
+
+    /**
+     * Asks which of [hashes] the library holds safely: stored, not in its trash, and present on its
+     * disk at the recorded size right now. The only answer "Free up space" deletes on.
+     *
+     * Deliberately not [knownHashes]: that one also vouches for trashed and unreachable copies,
+     * which is right for "is there any point uploading this?" and wrong for "may I delete mine?".
+     */
+    suspend fun verifySafe(hashes: List<String>): VerifyOutcome {
+        if (hashes.isEmpty()) return VerifyOutcome.Checked(emptySet())
+        return try {
+            val r = client.post("${base()}/api/v1/verify") {
+                auth()
+                contentType(ContentType.Application.Json)
+                setBody(HashCheckDto(hashes))
+            }
+            when {
+                r.status.value == 404 -> VerifyOutcome.Unsupported
+                r.status.isSuccess() -> VerifyOutcome.Checked(r.body<VerifyResultDto>().safe.toSet())
+                else -> VerifyOutcome.Failed("HTTP ${r.status.value}")
+            }
+        } catch (c: kotlinx.coroutines.CancellationException) {
+            throw c
+        } catch (t: Throwable) {
+            failed(t)
+            VerifyOutcome.Failed(lastError ?: t.toString())
+        }
+    }
+
     /**
      * Offers a capture date the client knows from MediaStore. The server applies it only if what it
      * holds is weaker, so this repairs historical mistakes without ever degrading a good date.
@@ -680,6 +718,9 @@ data class HashCheckResultDto(
     val known: List<String> = emptyList(),
     val ids: Map<String, Long> = emptyMap(),
 )
+
+@Serializable
+data class VerifyResultDto(val safe: List<String> = emptyList())
 
 @Serializable
 data class UploadInitDto(

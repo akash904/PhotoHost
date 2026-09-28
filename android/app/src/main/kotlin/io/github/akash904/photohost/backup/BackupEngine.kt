@@ -64,6 +64,19 @@ object BackupState {
 }
 
 /**
+ * Whether a photo is still the file its fingerprint describes, so the hash recorded then is its hash
+ * now. Shared by backup, which skips re-reading on this, and by freeing up space, which must never
+ * delete a photo edited since it was sent: an edit changes it, and the library holds the old bytes.
+ */
+internal fun isUnchanged(item: DeviceItem, fp: SourceFingerprintEntity): Boolean {
+    if (fp.sizeBytes != item.size) return false
+    // GENERATION_MODIFIED is an authoritative change token when the platform provides it;
+    // mtime alone is not, because some apps rewrite a file without touching it.
+    if (item.generation != null && fp.generation != null) return fp.generation == item.generation
+    return kotlin.math.abs(fp.modifiedAt - item.modifiedAt) <= 2_000L
+}
+
+/**
  * Backs this phone's camera roll up to the configured library.
  *
  * ### Three gates, cheapest first
@@ -276,14 +289,6 @@ class BackupEngine(
         }
         Log.i(TAG, "date repair offered for $fixed assets")
         prefs?.dateRepairDone = true
-    }
-
-    private fun isUnchanged(item: DeviceItem, fp: SourceFingerprintEntity): Boolean {
-        if (fp.sizeBytes != item.size) return false
-        // GENERATION_MODIFIED is an authoritative change token when the platform provides it;
-        // mtime alone is not, because some apps rewrite a file without touching it.
-        if (item.generation != null && fp.generation != null) return fp.generation == item.generation
-        return kotlin.math.abs(fp.modifiedAt - item.modifiedAt) <= 2_000L
     }
 
     private fun hashOf(item: DeviceItem): String? = try {

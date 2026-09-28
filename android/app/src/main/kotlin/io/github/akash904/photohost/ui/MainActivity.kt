@@ -39,6 +39,7 @@ import io.github.akash904.photohost.di.AppContainer
 import io.github.akash904.photohost.ui.screen.LibraryScreen
 import io.github.akash904.photohost.ui.screen.SettingsScreen
 import io.github.akash904.photohost.ui.screen.DevicePickerScreen
+import io.github.akash904.photohost.ui.screen.FreeUpSpaceScreen
 import io.github.akash904.photohost.ui.screen.PairQrScreen
 import io.github.akash904.photohost.ui.screen.ScanQrScreen
 import io.github.akash904.photohost.ui.screen.ServerScreen
@@ -135,6 +136,7 @@ private fun GpicApp() {
         }
         var viewerId by remember { mutableStateOf<Long?>(null) }
         var picking by remember { mutableStateOf(false) }
+        var freeingSpace by remember { mutableStateOf(false) }
         var showingQr by remember { mutableStateOf(false) }
         var scanningQr by remember { mutableStateOf(false) }
 
@@ -237,6 +239,7 @@ private fun GpicApp() {
                             setupKey++
                         },
                         onPickPhotos = { picking = true },
+                        onFreeUpSpace = { freeingSpace = true },
                         onShowPairingCode = { showingQr = true },
                         onScanPairingCode = { scanningQr = true },
                         onOpenTrash = { trashOpen = true },
@@ -356,6 +359,10 @@ private fun GpicApp() {
                 prefs = container.prefs,
                 onClose = { picking = false },
             )
+        }
+
+        if (freeingSpace) {
+            FreeUpSpaceScreen(onClose = { freeingSpace = false })
         }
 
         viewerId?.let { id ->

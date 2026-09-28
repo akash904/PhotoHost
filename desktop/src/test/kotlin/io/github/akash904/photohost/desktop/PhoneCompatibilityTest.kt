@@ -2,6 +2,7 @@ package io.github.akash904.photohost.desktop
 
 import io.github.akash904.photohost.core.dualHash
 import io.github.akash904.photohost.net.AssetDetailDto
+import io.github.akash904.photohost.net.BatchDto
 import io.github.akash904.photohost.net.BucketDto
 import io.github.akash904.photohost.net.EndpointsDto
 import io.github.akash904.photohost.net.HashCheckDto
@@ -15,6 +16,7 @@ import io.github.akash904.photohost.net.UploadFinishDto
 import io.github.akash904.photohost.net.UploadInitDto
 import io.github.akash904.photohost.net.UploadInitResultDto
 import io.github.akash904.photohost.net.UploadStatusDto
+import io.github.akash904.photohost.net.VerifyResultDto
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
@@ -448,6 +450,59 @@ class PhoneCompatibilityTest {
         val id = assertNotNull(init.uploadId)
         assertEquals(200, patchChunk(id, 0, bytes).status.value)
         assertEquals(400, api.post("$base/api/v1/upload/$id/finish").status.value)
+    }
+
+    // ---------------------------------------------------------------- free up space
+
+    /**
+     * The check a phone makes before deleting its own copies. Each way a stored copy can stop being
+     * safe has to turn the answer to no: an unknown hash, the asset in the trash, the file gone from
+     * the disk. Restoring from the trash turns it back to yes.
+     */
+    @Test
+    fun `verify vouches only for assets that are untrashed and present on disk`() = runBlocking {
+        // A picture of its own, so trashing and deleting it cannot disturb the shared fixtures.
+        val img = java.awt.image.BufferedImage(64, 48, java.awt.image.BufferedImage.TYPE_INT_RGB)
+        img.setRGB(1, 1, (System.nanoTime() and 0xFFFFFF).toInt())
+        val bytes = java.io.ByteArrayOutputStream().also { ImageIO.write(img, "png", it) }.toByteArray()
+        val hash = ByteArrayInputStream(bytes).dualHash().contentHash
+
+        val init = api.post("$base/api/v1/upload/init") {
+            contentType(ContentType.Application.Json)
+            setBody(UploadInitDto("verify-me.png", bytes.size.toLong(), hash))
+        }.body<UploadInitResultDto>()
+        val id = assertNotNull(init.uploadId)
+        assertEquals(200, patchChunk(id, 0, bytes).status.value)
+        val stored = api.post("$base/api/v1/upload/$id/finish").body<UploadFinishDto>()
+        val relPath = assertNotNull(stored.relPath)
+
+        suspend fun safe(vararg hashes: String): List<String> = api.post("$base/api/v1/verify") {
+            contentType(ContentType.Application.Json)
+            setBody(HashCheckDto(hashes.toList()))
+        }.body<VerifyResultDto>().safe
+
+        suspend fun batch(op: String) = api.post("$base/api/v1/assets/batch") {
+            contentType(ContentType.Application.Json)
+            setBody(BatchDto(listOf(stored.assetId), op))
+        }
+
+        val unknown = "0".repeat(64)
+        assertEquals(listOf(hash), safe(hash, unknown), "stored and present: safe; unknown: not")
+
+        batch("trash")
+        assertEquals(emptyList(), safe(hash), "in the trash: not safe")
+        // upload/check still says the library has it; that is the weaker question.
+        val known = api.post("$base/api/v1/upload/check") {
+            contentType(ContentType.Application.Json)
+            setBody(HashCheckDto(listOf(hash)))
+        }.body<HashCheckResultDto>().known
+        assertEquals(listOf(hash), known)
+
+        batch("restore")
+        assertEquals(listOf(hash), safe(hash), "restored: safe again")
+
+        assertTrue(File(libraryDir, relPath).delete(), "could not remove the stored file")
+        assertEquals(emptyList(), safe(hash), "file gone from disk: not safe")
     }
 
     // ---------------------------------------------------------------- helpers

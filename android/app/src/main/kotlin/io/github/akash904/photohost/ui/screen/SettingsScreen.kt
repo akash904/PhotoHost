@@ -79,6 +79,7 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(
     onEndpointChanged: () -> Unit,
     onPickPhotos: () -> Unit = {},
+    onFreeUpSpace: () -> Unit = {},
     onShowPairingCode: () -> Unit = {},
     onScanPairingCode: () -> Unit = {},
     onOpenTrash: () -> Unit = {},
@@ -423,6 +424,13 @@ fun SettingsScreen(
                     ?: "Not chosen — backup will not run until you pick a library",
                 value = "›",
                 onClick = { choosingBackup = true },
+            )
+            RowDivider()
+            SettingsRow(
+                title = "Free up space",
+                subtitle = "Remove photos from this phone that the backup library already holds",
+                value = "›",
+                onClick = onFreeUpSpace,
             )
             RowDivider()
             SettingsRow(
