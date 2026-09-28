@@ -117,7 +117,7 @@ class BackupEngine(
         BackupState.update { it.copy(running = true, total = items.size, done = 0) }
 
         return try {
-            backup(items)
+            backup(items, fullRun = onlyIds == null)
         } finally {
             // Cancellation unwinds through ensureActive(), so without this the card would sit on
             // "Backing up 31 of 402" forever after the user stopped it.
@@ -134,18 +134,38 @@ class BackupEngine(
         }
     }
 
-    private suspend fun backup(items: List<DeviceItem>): Result {
+    /**
+     * @param fullRun true for a run over the whole selection, which is the only kind that can
+     *   confirm the "already sent" records against the current target. A run over a few picked
+     *   photos says nothing about the rest.
+     */
+    private suspend fun backup(items: List<DeviceItem>, fullRun: Boolean): Result {
+
+        // Gate 1 trusts the "already sent" records only when they were confirmed against this
+        // target. They are keyed on the photo, not the library, so after "Back up to" moves from
+        // the PC to the Note 10 they would otherwise skip everything the PC received, and the new
+        // library would silently never get it. When the target differs, unchanged photos still
+        // skip re-reading (the record holds their hash) but go to the server check like new ones.
+        val target = api.library().id
+        val recordsFit = prefs == null || prefs.backupRecordsLibraryId == target
+        if (!recordsFit) Log.i(TAG, "backup target changed; checking every photo against it once")
 
         // Gate 1 runs over everything first, so `total` reflects real work rather than counting
         // down through thousands of instant skips.
         val candidates = ArrayList<DeviceItem>()
         val alreadySent = ArrayList<Pair<DeviceItem, String>>()
+        val knownHash = HashMap<DeviceItem, String>()
         for (item in items) {
             currentCoroutineContext().ensureActive()
             val fp = db.fingerprints().find(SourceKind.MEDIASTORE, item.sourceKey)
             if (fp != null && isUnchanged(item, fp)) {
-                alreadySent.add(item to fp.contentHash)
-                BackupState.update { it.copy(done = it.done + 1, skipped = it.skipped + 1) }
+                if (recordsFit) {
+                    alreadySent.add(item to fp.contentHash)
+                    BackupState.update { it.copy(done = it.done + 1, skipped = it.skipped + 1) }
+                } else {
+                    knownHash[item] = fp.contentHash
+                    candidates.add(item)
+                }
             } else {
                 candidates.add(item)
             }
@@ -164,7 +184,7 @@ class BackupEngine(
             for (item in batch) {
                 currentCoroutineContext().ensureActive()
                 BackupState.update { it.copy(uploading = false, currentName = item.name) }
-                val hash = hashOf(item)
+                val hash = knownHash[item] ?: hashOf(item)
                 if (hash == null) {
                     failed++
                     BackupState.update {
@@ -210,6 +230,15 @@ class BackupEngine(
                 if (ok) group.forEach { remember(it, hash) }
                 BackupState.update { it.copy(done = it.done + group.size) }
             }
+        }
+
+        // Every record now stands for "this target has it" -- but only if nothing failed. A photo
+        // that failed may still carry a record from the previous target, and marking the records
+        // as this target's would let the next run skip it for good. A cancelled run never gets
+        // here, which is equally correct.
+        if (fullRun && failed == 0 && prefs != null && prefs.backupRecordsLibraryId != target) {
+            prefs.backupRecordsLibraryId = target
+            Log.i(TAG, "backup records now confirmed against $target")
         }
 
         Log.i(TAG, "backup done: uploaded=$uploaded already=$duplicates failed=$failed")

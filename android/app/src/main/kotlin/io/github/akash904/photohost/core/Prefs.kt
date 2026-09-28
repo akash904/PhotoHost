@@ -232,6 +232,18 @@ class Prefs(context: Context) {
         get() = p.getBoolean(KEY_BACKUP, false)
         set(v) = p.edit().putBoolean(KEY_BACKUP, v).apply()
 
+    /**
+     * The library that this phone's "already sent" records were confirmed against.
+     *
+     * Those records (source fingerprints) are keyed on the photo, not on a library, so on their
+     * own they cannot tell "sent to the PC" from "sent to the Note 10". Backup trusts them only
+     * while this matches its current target. Null, as on every phone before this existed, means
+     * "not confirmed against anything": the next run checks everything with the target once.
+     */
+    var backupRecordsLibraryId: String?
+        get() = p.getString(KEY_BACKUP_RECORDS_LIBRARY, null)
+        set(v) = p.edit().putString(KEY_BACKUP_RECORDS_LIBRARY, v).apply()
+
     /** A camera roll is measured in gigabytes; cellular is off by default for a reason. */
     var backupWifiOnly: Boolean
         get() = p.getBoolean(KEY_BACKUP_WIFI, true)
@@ -376,5 +388,6 @@ class Prefs(context: Context) {
         const val KEY_LIBRARIES = "libraries"
         const val KEY_ACTIVE_LIBRARY = "activeLibrary"
         const val KEY_BACKUP_LIBRARY = "backupLibrary"
+        const val KEY_BACKUP_RECORDS_LIBRARY = "backupRecordsLibrary"
     }
 }
