@@ -123,6 +123,9 @@ class AppContainer private constructor(context: Context) {
                         cacheStrategy = { ImageOnlyCacheStrategy },
                     ),
                 )
+                // This phone's own photos and videos, for the backup picker; see DeviceThumbs.kt.
+                add(io.github.akash904.photohost.media.DeviceThumbFetcher.Factory())
+                add(io.github.akash904.photohost.media.DeviceThumbKeyer())
             }
             .memoryCache { MemoryCache.Builder().maxSizePercent(app, 0.25).build() }
             // Thumbnails are immutable and named by content hash, so caching them on disk is free
