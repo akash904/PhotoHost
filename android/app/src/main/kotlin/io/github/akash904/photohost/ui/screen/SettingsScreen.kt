@@ -348,10 +348,25 @@ fun SettingsScreen(
                 }
                 if (backup.running && backup.total > 0) {
                     LinearProgressIndicator(
-                        // Whichever phase is further along. Both counters only ever grow, so the
-                        // bar cannot go backwards when uploading catches up with hashing.
+                        // Every photo is two steps: checked (read and hashed) and finished (sent,
+                        // found already there, or given up on). Showing whichever count was further
+                        // ahead filled the bar during checking -- a batch of up to 200 photos is
+                        // checked before its first upload -- and then left it full through every
+                        // upload. Counting both steps puts "all checked" at half way, and the
+                        // current file's bytes move it smoothly through a long video.
+                        //
+                        // Unchanged photos are skipped without being read, so they count as both
+                        // steps at once (they are in done but never in checked). Every term only
+                        // grows, except the current file's fraction, which gives way to a whole
+                        // step in done when the file completes, so the bar never goes backwards.
                         progress = {
-                            maxOf(backup.done, backup.checked).toFloat() / backup.total
+                            val current = if (backup.uploading && backup.currentSize > 0) {
+                                backup.currentBytes.toFloat() / backup.currentSize
+                            } else {
+                                0f
+                            }
+                            val steps = backup.checked + backup.skipped + backup.done + current
+                            (steps / (2f * backup.total)).coerceIn(0f, 1f)
                         },
                         modifier = Modifier.fillMaxWidth(),
                     )
