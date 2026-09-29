@@ -158,7 +158,7 @@ fun ViewerScreen(
         offset = Offset.Zero
         val item = items.getOrNull(pagerState.currentPage)
         if (item != null && item.isVideo) {
-            player.setMediaItem(MediaItem.fromUri(api.originalUrl(item.id)))
+            player.setMediaItem(MediaItem.fromUri(api.originalUrl(item.id, item.v)))
             player.prepare()
             player.playWhenReady = true
         } else {
@@ -219,7 +219,7 @@ fun ViewerScreen(
                         model = ImageRequest.Builder(context)
                             // The preview is ~250 KB and already cached from nothing; the original
                             // would stall the swipe. Full resolution only matters once zoomed.
-                            .data(if (scale > 1.5f && isCurrent) api.originalUrl(item.id) else api.thumbUrl(item.id, "preview"))
+                            .data(if (scale > 1.5f && isCurrent) api.originalUrl(item.id, item.v) else api.thumbUrl(item.id, "preview", item.v))
                             .crossfade(true)
                             .build(),
                         contentDescription = null,

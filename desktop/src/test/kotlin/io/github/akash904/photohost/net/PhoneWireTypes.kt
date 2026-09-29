@@ -23,6 +23,7 @@ data class TimelineItemDto(
     val favorite: Boolean = false,
     val blurhash: String? = null,
     val isVideo: Boolean = false,
+    val v: String? = null,
 )
 
 @Serializable

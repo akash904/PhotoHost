@@ -360,10 +360,19 @@ class LibraryApi(
         }
     }
 
-    fun thumbUrl(assetId: Long, size: String = "grid"): String =
-        "${baseUrl()}/api/v1/assets/$assetId/thumb?size=$size"
+    /**
+     * [v] is the start of the asset's content hash, from the timeline. Coil caches these images by
+     * URL for as long as the server allows, which for a thumbnail is a year; an asset id alone is
+     * reused for a different photo whenever a library's index is rebuilt, and the cache then showed
+     * the old photo in the new one's place. With the content in the URL, a different photo is
+     * always a different URL. The server ignores the parameter.
+     */
+    fun thumbUrl(assetId: Long, size: String = "grid", v: String? = null): String =
+        "${baseUrl()}/api/v1/assets/$assetId/thumb?size=$size" + (v?.let { "&v=$it" } ?: "")
 
-    fun originalUrl(assetId: Long): String = "${baseUrl()}/api/v1/assets/$assetId/original"
+    /** As [thumbUrl]: the original is cached too, when zoomed in. */
+    fun originalUrl(assetId: Long, v: String? = null): String =
+        "${baseUrl()}/api/v1/assets/$assetId/original" + (v?.let { "?v=$it" } ?: "")
 
     /** Coil and ExoPlayer both need this, since thumbnails and originals are authenticated too. */
     fun authHeader(): String = "Bearer ${target().token}"
@@ -668,6 +677,8 @@ data class TimelineItemDto(
     val favorite: Boolean = false,
     val blurhash: String? = null,
     val isVideo: Boolean = false,
+    /** The start of the content hash, for image URLs; see [LibraryApi.thumbUrl]. */
+    val v: String? = null,
 ) {
     /** Falls back to square so a missing dimension cannot break the row solver. */
     val aspectRatio: Float
@@ -705,6 +716,7 @@ data class TrashItemDto(
     val deletedAt: Long = 0,
     val blurhash: String? = null,
     val sourceAlbum: String? = null,
+    val v: String? = null,
 )
 
 @Serializable

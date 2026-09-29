@@ -200,7 +200,7 @@ private fun TrashTile(
     ) {
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
-                .data(api.thumbUrl(item.id))
+                .data(api.thumbUrl(item.id, v = item.v))
                 .build(),
             contentDescription = null,
             contentScale = ContentScale.Crop,

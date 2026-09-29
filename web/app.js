@@ -144,6 +144,15 @@ function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
+/*
+ * Image URLs carry the start of the content hash ("v", from the timeline). Thumbnails are cached by
+ * the browser for a year, keyed by URL, and an asset id alone is reused for a different photo when
+ * a library's index is rebuilt -- the browser then kept showing the old photo in the new one's place.
+ * With the content in the URL, a different photo is always a different URL. The server ignores it.
+ */
+const thumbSrc = (item, size = 'grid') => `${API}/assets/${item.id}/thumb?size=${size}${item.v ? `&v=${item.v}` : ''}`;
+const originalSrc = (item) => `${API}/assets/${item.id}/original${item.v ? `?v=${item.v}` : ''}`;
+
 // ---------------------------------------------------------------- data
 
 async function api(path, opts) {
@@ -322,7 +331,7 @@ function tile(cell) {
   img.decoding = 'async';
   img.alt = '';
   // Request roughly the displayed size class; grid thumbs are 256px on the short edge.
-  img.dataset.src = `${API}/assets/${item.id}/thumb?size=grid`;
+  img.dataset.src = thumbSrc(item);
   d.appendChild(img);
   io.observe(img);
 
@@ -474,7 +483,7 @@ function openViewer(index) {
   if (item.isVideo) {
     const v = document.createElement('video');
     // The original, streamed with Range support -- which is what makes scrubbing work.
-    v.src = `${API}/assets/${item.id}/original`;
+    v.src = originalSrc(item);
     v.controls = true;
     v.autoplay = true;
     v.preload = 'metadata';
@@ -482,13 +491,13 @@ function openViewer(index) {
   } else {
     // Show the preview immediately, then swap in the original once it has decoded.
     const img = document.createElement('img');
-    img.src = `${API}/assets/${item.id}/thumb?size=preview`;
+    img.src = thumbSrc(item, 'preview');
     // Otherwise a mouse drag to pan picks the image up as a file to drag out of the page.
     img.draggable = false;
     el.viewerMedia.appendChild(img);
     zoomReset(img);
     const full = new Image();
-    full.src = `${API}/assets/${item.id}/original`;
+    full.src = originalSrc(item);
     full.addEventListener('load', () => { if (state.viewerIndex === index) img.src = full.src; });
   }
   if (!el.viewerInfo.classList.contains('hidden')) loadInfo(item.id);
@@ -658,7 +667,7 @@ async function loadInfo(id) {
       <dt>Path</dt><dd>${d.relPath ?? '(unresolved)'}</dd>
       <dt>Hash</dt><dd style="font:11px monospace">${d.contentHash.slice(0, 24)}…</dd>
     </dl>
-    <p style="margin-top:16px"><a href="${API}/assets/${d.id}/original?download=1" style="color:var(--accent)">Download original</a></p>`;
+    <p style="margin-top:16px"><a href="${API}/assets/${d.id}/original?download=1&v=${d.contentHash.slice(0, 16)}" style="color:var(--accent)">Download original</a></p>`;
 }
 
 
@@ -682,7 +691,7 @@ function renderTrash() {
     img.loading = 'lazy';
     img.alt = '';
     // Thumbnails still exist because trashing is a soft delete; nothing is removed until a purge.
-    img.dataset.src = `${API}/assets/${item.id}/thumb?size=grid`;
+    img.dataset.src = thumbSrc(item);
     d.appendChild(img);
     io.observe(img);
 
@@ -1205,7 +1214,7 @@ async function shareAssets(ids, onProgress = () => {}, onNeedsTap = () => {}) {
     const files = [];
     for (let i = 0; i < details.length; i++) {
       onProgress(i, details.length);
-      const r = await fetch(`${API}/assets/${details[i].id}/original`);
+      const r = await fetch(`${API}/assets/${details[i].id}/original?v=${details[i].contentHash.slice(0, 16)}`);
       if (!r.ok) throw new Error(`original -> ${r.status}`);
       files.push(new File([await r.blob()], names[i], { type: details[i].mime || 'application/octet-stream' }));
     }
@@ -1221,7 +1230,7 @@ async function shareAssets(ids, onProgress = () => {}, onNeedsTap = () => {}) {
   for (let i = 0; i < details.length; i++) {
     onProgress(i, details.length);
     const a = document.createElement('a');
-    a.href = `${API}/assets/${details[i].id}/original?download=1`;
+    a.href = `${API}/assets/${details[i].id}/original?download=1&v=${details[i].contentHash.slice(0, 16)}`;
     a.download = names[i];
     document.body.appendChild(a);
     a.click();

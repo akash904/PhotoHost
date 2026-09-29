@@ -378,6 +378,7 @@ class HttpServer(
                                 deletedAt = it.deletedAt ?: 0,
                                 blurhash = it.blurhash,
                                 sourceAlbum = it.sourceAlbum,
+                                v = it.contentHash.take(16),
                             )
                         },
                     )
@@ -750,6 +751,7 @@ private fun io.github.akash904.photohost.data.dao.TimelineRow.toDto() = Timeline
     favorite = favorite,
     blurhash = blurhash,
     isVideo = mediaType == MediaType.VIDEO,
+    v = contentHash.take(16),
 )
 
 /** Deliberately terse field names: 200 of these have to fit comfortably in one response. */
@@ -767,6 +769,15 @@ data class TimelineItemDto(
     val favorite: Boolean,
     val blurhash: String?,
     val isVideo: Boolean,
+    /**
+     * The start of the content hash, for clients to put in image URLs as `?v=`.
+     *
+     * Thumbnails are served with a year-long cache lifetime, and clients cache by URL. An asset id
+     * is only unique within one index: rebuild the index and id 5 is a different photo, while every
+     * client keeps showing what it cached for id 5. A URL that carries the content can never be
+     * reused for different content, whatever happens to the ids.
+     */
+    val v: String? = null,
 )
 
 @Serializable
@@ -795,6 +806,8 @@ data class TrashItemDto(
     val deletedAt: Long,
     val blurhash: String?,
     val sourceAlbum: String? = null,
+    /** As [TimelineItemDto.v]. */
+    val v: String? = null,
 )
 
 @Serializable

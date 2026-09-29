@@ -418,7 +418,7 @@ private fun PhotoRow(
                 cell = cell,
                 widthDp = with(density) { cell.width.toDp() },
                 heightDp = with(density) { cell.height.toDp() },
-                thumbUrl = vm.api.thumbUrl(cell.item.id),
+                thumbUrl = vm.api.thumbUrl(cell.item.id, v = cell.item.v),
                 selected = isSelected,
                 selectionMode = selected.isNotEmpty(),
                 onClick = {

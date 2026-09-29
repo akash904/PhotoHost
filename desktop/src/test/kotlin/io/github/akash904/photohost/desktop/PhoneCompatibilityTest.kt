@@ -452,6 +452,22 @@ class PhoneCompatibilityTest {
         assertEquals(400, api.post("$base/api/v1/upload/$id/finish").status.value)
     }
 
+    /**
+     * Clients cache images by URL for a year, and ids are reused when an index is rebuilt, so the
+     * timeline hands out the start of each asset's content hash for them to put in image URLs.
+     */
+    @Test
+    fun `timeline items carry the content version clients key image urls on`() = runBlocking {
+        for (item in fullTimeline()) {
+            val d = api.get("$base/api/v1/assets/${item.id}").body<AssetDetailDto>()
+            assertEquals(d.contentHash.take(16), item.v, "asset ${item.id}")
+        }
+        // And the server still serves a thumbnail URL that carries it. A JPEG, since this suite runs
+        // without video or HEIC decoders and those thumbnails are never ready here.
+        val jpeg = fullTimeline().first { it.mime == "image/jpeg" }
+        assertEquals(200, api.get("$base/api/v1/assets/${jpeg.id}/thumb?size=grid&v=${jpeg.v}").status.value)
+    }
+
     // ---------------------------------------------------------------- free up space
 
     /**
