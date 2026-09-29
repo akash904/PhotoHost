@@ -4,7 +4,7 @@ import android.content.Context
 import android.provider.MediaStore
 import android.util.Log
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 
 /**
  * The folders MediaStore groups media into: `Camera`, `Screenshots`, `WhatsApp Images`, `Instagram`,

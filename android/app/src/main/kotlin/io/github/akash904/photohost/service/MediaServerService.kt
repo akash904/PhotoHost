@@ -44,7 +44,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 private const val CHANNEL = "server"
 private const val NOTIF_ID = 1
 private const val HEARTBEAT_INTERVAL_MS = 60_000L
@@ -67,7 +67,7 @@ private const val SWEEP_INTERVAL_MS = 6 * 60 * 60_000L
  */
 class MediaServerService : Service() {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineName("gpic-svc"))
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineName("photohost-svc"))
     private lateinit var container: AppContainer
 
     private var server: HttpServer? = null
@@ -385,7 +385,7 @@ class MediaServerService : Service() {
     private fun acquireLocks() {
         if (wakeLock != null) return
         val pm = getSystemService(POWER_SERVICE) as PowerManager
-        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "gpic:server").apply {
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "photohost:server").apply {
             setReferenceCounted(false)
             acquire()
         }
@@ -396,7 +396,7 @@ class MediaServerService : Service() {
             @Suppress("DEPRECATION")
             WifiManager.WIFI_MODE_FULL_HIGH_PERF
         }
-        wifiLock = wm.createWifiLock(mode, "gpic:wifi").apply {
+        wifiLock = wm.createWifiLock(mode, "photohost:wifi").apply {
             setReferenceCounted(false)
             acquire()
         }

@@ -23,7 +23,7 @@ import java.util.concurrent.Callable
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 
 /** The Windows codec that would decode this file is not installed, e.g. no HEVC Video Extensions. */
 class DecoderUnavailableException(message: String) : Exception(message)

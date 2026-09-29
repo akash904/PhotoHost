@@ -9,8 +9,8 @@ import java.security.SecureRandom
 import java.security.cert.X509Certificate
 import java.util.Base64
 
-private const val TAG = "gpic"
-private const val ALIAS = "gpic"
+private const val TAG = "photohost"
+private const val ALIAS = "photohost"
 
 /** PKCS12, because Android's providers do not offer JKS. Kept on the desktop for one format. */
 private const val FORMAT = "PKCS12"
@@ -33,8 +33,8 @@ private const val FORMAT = "PKCS12"
  */
 class CertStore(private val dir: File) {
 
-    private val storeFile = File(dir, "gpic-tls.p12")
-    private val passwordFile = File(dir, "gpic-tls.pw")
+    private val storeFile = File(dir, "photohost-tls.p12")
+    private val passwordFile = File(dir, "photohost-tls.pw")
 
     data class Identity(
         val keyStore: KeyStore,

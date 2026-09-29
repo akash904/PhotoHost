@@ -44,7 +44,7 @@ import io.github.akash904.photohost.ui.components.Footnote
  * The code carries the ordinary pairing URL, `http://<host>:<port>/pair?c=<token>`, rather than a
  * private format. That single choice makes one QR serve both clients: this app parses it to
  * configure itself, and any phone camera or browser opens it as a link, which signs that browser
- * in. A bespoke `gpic://` payload would have needed a second QR for browsers.
+ * in. A bespoke `photohost://` payload would have needed a second QR for browsers.
  *
  * Separate from any composable because two screens show this code -- the Server tab inline, and the
  * full-screen version reached from Settings -- and a payload that differed between them would be a

@@ -76,7 +76,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun tokens(): AuthTokenDao
 
     companion object {
-        const val NAME = "gpic.db"
+        const val NAME = "photohost.db"
 
         /**
          * FILENAME and MTIME swapped places in [io.github.akash904.photohost.data.entity.CaptureSource], so stored

@@ -230,14 +230,14 @@ class LibraryApi(
             // Logged on every successful probe, not only on a change. When the question is
             // "which way is it talking to the library right now", inferring it from which
             // requests failed is guesswork, and this is one line.
-            android.util.Log.i("gpic", "library reachable at $found")
+            android.util.Log.i("photohost", "library reachable at $found")
             return found
         }
         // Nothing answered. Keep the preferred address so the error names something meaningful.
         failedSweeps++
         lastFailedSweepAt = System.currentTimeMillis()
         android.util.Log.w(
-            "gpic",
+            "photohost",
             "no candidate answered; ${candidates.size} tried, " +
                 "not sweeping again for ${backoffMillis() / 1000}s",
         )
@@ -300,7 +300,7 @@ class LibraryApi(
         val probes = group.map { candidate ->
             launch {
                 if (reachable(candidate)) winner.complete(candidate)
-                else android.util.Log.i("gpic", "no answer from $candidate")
+                else android.util.Log.i("photohost", "no answer from $candidate")
             }
         }
         launch {
@@ -350,13 +350,13 @@ class LibraryApi(
      */
     suspend fun refreshEndpoints() {
         val found = getOrNull<EndpointsDto>("/api/v1/endpoints") ?: run {
-            android.util.Log.w("gpic", "could not learn the server's other addresses: $lastError")
+            android.util.Log.w("photohost", "could not learn the server's other addresses: $lastError")
             return
         }
         val urls = found.endpoints.map { it.url }.filterNot { it.contains("127.0.0.1") }
         if (urls.isNotEmpty()) {
             prefs.updateCandidates(target().id, urls)
-            android.util.Log.i("gpic", "learned ${urls.size} candidate addresses")
+            android.util.Log.i("photohost", "learned ${urls.size} candidate addresses")
         }
     }
 
@@ -641,7 +641,7 @@ class LibraryApi(
         }
     } catch (t: Throwable) {
         failed(t)
-        android.util.Log.w("gpic", "api $path failed", t)
+        android.util.Log.w("photohost", "api $path failed", t)
         null
     }
 

@@ -210,8 +210,8 @@ class ProbeViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun log(line: String) {
-        // Mirrored to logcat so a run can be read with `adb logcat -s gpic` without tapping Save.
-        if (line.isNotEmpty()) Log.i("gpic", line)
+        // Mirrored to logcat so a run can be read with `adb logcat -s photohost` without tapping Save.
+        if (line.isNotEmpty()) Log.i("photohost", line)
         val stamped = if (line.isEmpty()) "" else "${clock.format(Date())}  $line"
         val next = _lines.value + stamped
         _lines.value = if (next.size > MAX_LINES) next.takeLast(MAX_LINES) else next

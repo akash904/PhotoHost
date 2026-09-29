@@ -7,7 +7,7 @@ import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 
 /** One item in this device's own media store. */
 data class DeviceItem(

@@ -9,7 +9,7 @@ import io.github.akash904.photohost.net.LibraryApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 
 /**
  * Finds the photos this phone can delete because its backup library holds them safely.

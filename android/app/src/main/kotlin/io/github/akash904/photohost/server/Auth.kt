@@ -79,7 +79,7 @@ class Auth(private val token: String) {
     fun matches(candidate: String?): Boolean = constantTimeEquals(candidate, token)
 
     companion object {
-        const val COOKIE = "gpic"
+        const val COOKIE = "photohost"
         private const val BEARER = "Bearer "
 
         /** Ten wrong guesses per address, then a five minute freeze. */

@@ -106,8 +106,8 @@ class BackupWorker(context: Context, params: WorkerParameters) : CoroutineWorker
 
 object BackupScheduler {
 
-    private const val PERIODIC = "gpic-backup-periodic"
-    private const val ONE_SHOT = "gpic-backup-now"
+    private const val PERIODIC = "photohost-backup-periodic"
+    private const val ONE_SHOT = "photohost-backup-now"
 
     /**
      * @param wifiOnly metered connections are excluded, because a camera roll is measured in

@@ -22,7 +22,7 @@ enum class DeviceRole { UNSET, HOST, VIEWER }
  */
 class Prefs(context: Context) {
 
-    private val p = context.applicationContext.getSharedPreferences("gpic", Context.MODE_PRIVATE)
+    private val p = context.applicationContext.getSharedPreferences("photohost", Context.MODE_PRIVATE)
 
     var backend: String
         get() = p.getString(KEY_BACKEND, "INTERNAL") ?: "INTERNAL"

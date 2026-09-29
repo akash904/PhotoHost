@@ -52,7 +52,7 @@ class FolderImporterTest {
         File(source, ".thumbnails").mkdirs()
         File(source, Fixtures.LANDSCAPE).copyTo(File(source, ".thumbnails/cached.jpg"))
 
-        db = AppDatabase.open(File(work, "data/gpic.db"))
+        db = AppDatabase.open(File(work, "data/photohost.db"))
         library = FolderStore(libraryDir)
         scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         free = null

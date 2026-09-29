@@ -5,7 +5,7 @@ import com.sun.jna.platform.win32.WinReg
 import io.github.akash904.photohost.core.Log
 import java.io.File
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 
 /**
  * "Start PhotoHost when I sign in to Windows".

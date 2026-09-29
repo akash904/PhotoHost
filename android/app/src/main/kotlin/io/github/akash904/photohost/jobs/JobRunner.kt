@@ -16,7 +16,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlin.math.min
 import kotlin.math.pow
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 
 /** What a handler decided. The distinction between [Fail] and [Blocked] is the important one. */
 sealed interface Outcome {

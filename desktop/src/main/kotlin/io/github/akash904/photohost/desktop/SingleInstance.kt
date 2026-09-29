@@ -10,7 +10,7 @@ import java.nio.channels.FileChannel
 import java.nio.channels.FileLock
 import java.nio.file.StandardOpenOption
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 
 /**
  * One PhotoHost per data directory.

@@ -47,7 +47,7 @@ import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import io.github.akash904.photohost.core.Prefs
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 
 /** What a pairing QR resolves to. */
 data class PairingInfo(

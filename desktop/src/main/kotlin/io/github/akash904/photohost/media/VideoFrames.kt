@@ -8,7 +8,7 @@ import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 
 /**
  * Pulls one frame out of a video with ffmpeg, run as a separate process.

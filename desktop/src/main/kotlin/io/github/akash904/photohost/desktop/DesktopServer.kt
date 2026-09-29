@@ -42,7 +42,7 @@ import kotlinx.coroutines.runBlocking
 import java.io.File
 import java.net.BindException
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 private const val HEARTBEAT_INTERVAL_MS = 60_000L
 
 /** What the window shows. */
@@ -74,7 +74,7 @@ data class ServerStatus(
  */
 class DesktopServer(private val config: Config) {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineName("gpic-desktop"))
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineName("photohost-desktop"))
     private val dispatchers = AppDispatchers()
 
     private val _status = MutableStateFlow(ServerStatus())

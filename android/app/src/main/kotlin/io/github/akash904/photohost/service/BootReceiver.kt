@@ -31,15 +31,15 @@ class BootReceiver : BroadcastReceiver() {
             else -> prefs.wasRunning || prefs.autostart
         }
         if (!shouldStart) {
-            Log.i("gpic", "$action: not configured to start, staying down")
+            Log.i("photohost", "$action: not configured to start, staying down")
             return
         }
         try {
             MediaServerService.start(context)
-            Log.i("gpic", "boot: service start requested ($action)")
+            Log.i("photohost", "boot: service start requested ($action)")
         } catch (t: Throwable) {
             // ForegroundServiceStartNotAllowedException on newer platforms, among others.
-            Log.e("gpic", "boot: could not start service", t)
+            Log.e("photohost", "boot: could not start service", t)
         }
     }
 }

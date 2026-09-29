@@ -149,10 +149,10 @@ class PhoneCompatibilityTest {
         val r = browser.get("$base/pair") { parameter("c", token) }
         assertEquals(302, r.status.value)
         val cookie = assertNotNull(r.headers[HttpHeaders.SetCookie])
-        assertTrue(cookie.startsWith("gpic=$token"), cookie)
+        assertTrue(cookie.startsWith("photohost=$token"), cookie)
         assertTrue("HttpOnly" in cookie && "SameSite=Lax" in cookie, cookie)
 
-        val page = browser.get("$base/") { header(HttpHeaders.Cookie, "gpic=$token") }
+        val page = browser.get("$base/") { header(HttpHeaders.Cookie, "photohost=$token") }
         assertEquals(200, page.status.value)
         assertTrue(page.bodyAsText().contains("<html", ignoreCase = true))
 

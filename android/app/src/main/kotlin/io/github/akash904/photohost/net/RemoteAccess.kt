@@ -20,7 +20,7 @@ import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.NetworkInterface
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 
 /** Requested lease. Renewed at half of it, which absorbs one missed renewal without an outage. */
 private const val LEASE_SECONDS = 3600

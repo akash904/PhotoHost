@@ -35,8 +35,9 @@ pinned TLS connection. Run them after any change to server code.
 - **The web page exists once,** in `web/`, and both builds include it.
 - **Both servers must create the same database.** A desktop test compares the latest Room schema
   exported by each app, and any schema change needs a migration in both.
-- **Names stored on disk or sent on the wire keep their old `gpic` prefix** (`gpic.db`, the `gpic`
-  cookie, `.gpic-library-id`). Renaming them would break existing libraries and pairings.
+- **Names stored on disk or sent on the wire are permanent** (`photohost.db`, the `photohost`
+  cookie, `.photohost-library-id`, the settings file). Renaming one breaks every existing library
+  or pairing, so it needs a migration, not just a new name.
 
 ## Style
 

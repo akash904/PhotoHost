@@ -47,7 +47,7 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 
 /** What the window shows about the import. */
 data class ImportStatus(
@@ -92,7 +92,7 @@ data class Discovery(
  *  2. **Duplicate?** Size plus the first 64 KiB rule most files out as new without reading them
  *     whole. Only when that matches something already stored is the file hashed in full, and if the
  *     bytes are already in the library -- from a phone backup, or another folder -- it is skipped.
- *  3. **Copy** to `.gpic-tmp/<uuid>.part` inside the library, hashing as it goes, then fsync.
+ *  3. **Copy** to `.photohost-tmp/<uuid>.part` inside the library, hashing as it goes, then fsync.
  *  4. **Verify** by reading the copy back and hashing it again. A truncated or corrupted write can
  *     never be committed.
  *  5. **Commit**: rename into `yyyy/MM/<name>-<hash8>.<ext>` -- the layout phone uploads use -- and
@@ -537,7 +537,7 @@ class FolderImporter(
     companion object {
         const val BATCH = 200
         const val HEAD = 64 * 1024L
-        const val TEMP_DIR = ".gpic-tmp"
+        const val TEMP_DIR = ".photohost-tmp"
         private const val MTIME_TOLERANCE_MS = 2_000L
 
         /** Never fill the library drive completely: Windows and the database both need room. */

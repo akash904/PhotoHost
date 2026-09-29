@@ -21,7 +21,7 @@ import java.util.Random
 
 private const val MIB = 1024L * 1024L
 private const val BUF = 256 * 1024
-private const val PROBE_DIR = "gpic-probe"
+private const val PROBE_DIR = "photohost-probe"
 
 /**
  * M0. Answers the questions the rest of the design depends on, before any product code exists.

@@ -17,7 +17,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.long
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 
 /**
  * Renders one thumbnail.

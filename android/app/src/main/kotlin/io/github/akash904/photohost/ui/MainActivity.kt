@@ -59,12 +59,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { GpicApp() }
+        setContent { PhotoHostApp() }
     }
 }
 
 @Composable
-private fun GpicApp() {
+private fun PhotoHostApp() {
     val context = LocalContext.current
     val container = remember { AppContainer.get(context) }
 
@@ -126,7 +126,7 @@ private fun GpicApp() {
         )
     }
 
-    MaterialTheme(colorScheme = GpicDarkColors) {
+    MaterialTheme(colorScheme = PhotoHostDarkColors) {
         // Opens on whatever this phone leads with, which on the phone holding the photos is the
         // server. Evaluated once, so the tab under your finger never moves mid-session.
         var tab by remember {
@@ -400,7 +400,7 @@ private fun Tab.glyph() = when (this) {
 }
 
 /** Dark by default: a photo grid reads better against near-black than against white. */
-private val GpicDarkColors = darkColorScheme(
+private val PhotoHostDarkColors = darkColorScheme(
     background = Color(0xFF101114),
     surface = Color(0xFF16181C),
     surfaceVariant = Color(0xFF23262C),

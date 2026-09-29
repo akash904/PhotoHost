@@ -22,7 +22,7 @@ import io.github.akash904.photohost.storage.LibraryStore
 import io.github.akash904.photohost.storage.StoreEntry
 import java.io.FileInputStream
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 
 /** Timestamp comparisons allow for exFAT's two-second granularity. */
 private const val MTIME_TOLERANCE_MS = 2_000L
@@ -255,7 +255,7 @@ class StoreScanner(
             for (child in children) {
                 if (child.isDirectory) {
                     // Our own scratch directories are not library content.
-                    if (child.name.startsWith(".gpic") || child.name == "gpic-probe") continue
+                    if (child.name.startsWith(".photohost") || child.name == "photohost-probe") continue
                     queue.addLast(child.relPath)
                     continue
                 }

@@ -122,10 +122,10 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             val live = api.activeEndpoint.value != null
             when {
                 !live ->
-                    android.util.Log.i("gpic", "no address answered after a network change")
+                    android.util.Log.i("photohost", "no address answered after a network change")
 
                 resolved != _state.value.endpoint -> {
-                    android.util.Log.i("gpic", "library address moved to $resolved")
+                    android.util.Log.i("photohost", "library address moved to $resolved")
                     refresh()
                 }
             }

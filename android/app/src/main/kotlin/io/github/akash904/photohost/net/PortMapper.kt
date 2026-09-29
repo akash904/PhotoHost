@@ -14,7 +14,7 @@ import java.net.SocketTimeoutException
 import java.net.URL
 import java.security.SecureRandom
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 private const val SSDP_HOST = "239.255.255.250"
 private const val SSDP_PORT = 1900
 private const val PCP_PORT = 5351

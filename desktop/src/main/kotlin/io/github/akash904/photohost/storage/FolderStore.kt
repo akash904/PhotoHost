@@ -132,8 +132,8 @@ class FolderStore(rootDir: File) : LibraryStore {
     companion object {
         const val MIME_DIR = "inode/directory"
 
-        /** Starts with ".gpic" so the scanner's scratch-name rule already leaves it alone. */
-        const val ID_FILE = ".gpic-library-id"
+        /** Starts with ".photohost" so the scanner's scratch-name rule already leaves it alone. */
+        const val ID_FILE = ".photohost-library-id"
     }
 }
 

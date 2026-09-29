@@ -9,7 +9,7 @@ import java.security.cert.X509Certificate
 import javax.net.ssl.SSLContext
 import javax.net.ssl.X509TrustManager
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 
 /**
  * Trusts exactly one certificate: the one whose fingerprint was carried in the pairing QR.

@@ -17,7 +17,7 @@ import javax.net.ssl.KeyManagerFactory
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLServerSocket
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 private const val BUFFER = 32 * 1024
 
 /**

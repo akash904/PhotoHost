@@ -235,7 +235,7 @@ class SafStore(
      */
     override fun capacity(): Capacity? {
         val existing = firstFileRel()
-        val scratch = if (existing == null) ".gpic-capacity-probe" else null
+        val scratch = if (existing == null) ".photohost-capacity-probe" else null
         val rel = existing ?: scratch!!
         try {
             if (scratch != null) openWrite(rel).use { }

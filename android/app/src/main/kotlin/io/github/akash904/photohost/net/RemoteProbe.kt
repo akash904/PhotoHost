@@ -18,7 +18,7 @@ import javax.net.ssl.SSLSocket
 import javax.net.ssl.X509TrustManager
 import kotlin.coroutines.resume
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 
 /**
  * Answers "can the library actually be reached from the internet?" without trusting anyone to tell us.

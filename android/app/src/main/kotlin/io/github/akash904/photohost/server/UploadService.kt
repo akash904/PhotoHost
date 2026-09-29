@@ -19,7 +19,7 @@ import java.util.Locale
 import java.util.TimeZone
 import java.util.UUID
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 
 /**
  * Receives uploads from a backup client.

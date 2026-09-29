@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 
 /**
  * Emits whenever the device's default network changes, so the app can re-decide which address

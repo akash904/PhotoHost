@@ -8,7 +8,7 @@ import java.awt.TrayIcon
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 
 /**
  * PhotoHost's icon next to the clock, which is where a server with no window lives.

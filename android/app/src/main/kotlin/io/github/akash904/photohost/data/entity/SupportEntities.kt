@@ -240,7 +240,7 @@ data class ImportItemEntity(
     /** [ImportStage]. */
     val stage: Int,
     @ColumnInfo(name = "content_hash") val contentHash: String? = null,
-    /** ".gpic-tmp/<uuid>.part", inside the destination directory so the rename is atomic. */
+    /** ".photohost-tmp/<uuid>.part", inside the destination directory so the rename is atomic. */
     @ColumnInfo(name = "temp_rel_path") val tempRelPath: String? = null,
     @ColumnInfo(name = "final_rel_path") val finalRelPath: String? = null,
     @ColumnInfo(name = "asset_id") val assetId: Long? = null,

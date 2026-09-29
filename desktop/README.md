@@ -52,8 +52,8 @@ JAVA_HOME="/c/Program Files/Android/Android Studio/jbr" ./gradlew test
 | `--print-endpoints` | Lists network adapters and what would be advertised, then exits |
 
 The data directory holds `config.properties` (port, token, library), `tls/`, `photohost.log`, and
-`libraries/<library-id>/` with each library's `gpic.db`, `thumbs/` and `staging/`. The library folder holds only originals, plus a hidden
-`.gpic-library-id` that keeps its identity if the drive letter changes.
+`libraries/<library-id>/` with each library's `photohost.db`, `thumbs/` and `staging/`. The library folder holds only originals, plus a hidden
+`.photohost-library-id` that keeps its identity if the drive letter changes.
 
 Files copied into the library folder are picked up at start-up, or with **Rescan library**.
 

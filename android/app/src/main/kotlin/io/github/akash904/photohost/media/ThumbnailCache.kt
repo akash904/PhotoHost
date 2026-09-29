@@ -6,7 +6,7 @@ import io.github.akash904.photohost.data.db.AppDatabase
 import io.github.akash904.photohost.data.entity.ThumbSize
 import java.io.File
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 
 /**
  * Keeps the thumbnail cache inside a budget.

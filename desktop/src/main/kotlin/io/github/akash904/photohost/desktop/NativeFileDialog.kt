@@ -18,7 +18,7 @@ import java.awt.Window
 import java.io.File
 import javax.swing.SwingUtilities
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 
 /**
  * The real Windows file dialog -- IFileOpenDialog, the one Explorer and every current Windows app

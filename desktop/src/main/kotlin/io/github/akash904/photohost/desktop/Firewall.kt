@@ -12,7 +12,7 @@ import java.io.File
 import java.util.Base64
 import java.util.concurrent.TimeUnit
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 
 /**
  * Whether Windows Firewall lets phones reach PhotoHost, and one button to make it so.

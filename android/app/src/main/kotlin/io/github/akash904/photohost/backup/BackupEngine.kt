@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
-private const val TAG = "gpic"
+private const val TAG = "photohost"
 private const val CHUNK = 1 shl 20
 private const val CHECK_BATCH = 200
 
