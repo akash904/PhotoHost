@@ -187,6 +187,13 @@ class MediaServerService : Service() {
         http.start()
         server = http
 
+        // Look at the library folder on every start, as the PC server does. Uploads index
+        // themselves, but files can also arrive by other routes -- a USB drive that already holds
+        // photos, a reinstall that kept the folder but not the index -- and without this the
+        // library showed as empty until someone found the scan button. Unchanged files are
+        // skipped by their fingerprints, so a rescan of a known library is cheap.
+        scope.launch { enqueueScan() }
+
         // Started after the HTTP server, since it relays to it.
         tls?.let { identity ->
             val proxy = TlsProxy(identity, listenPort = port + 363, targetPort = port)
