@@ -60,6 +60,8 @@ private const val TOUCH_INTERVAL_MS = 60 * 60_000L
  */
 class HttpServer(
     private val store: LibraryStore,
+    /** The row for [store]'s location. Listings and file lookups are scoped to it; see AssetDao. */
+    private val volumeId: Long,
     private val db: AppDatabase,
     private val assets: AssetManager,
     private val thumbs: ThumbnailGenerator,
@@ -173,7 +175,7 @@ class HttpServer(
                     if (call.denied()) return@get
                     val limit = (call.request.queryParameters["limit"]?.toIntOrNull() ?: 200).coerceIn(1, 500)
                     val cursor = Cursor.parse(call.request.queryParameters["cursor"])
-                    val rows = db.assets().timeline(cursor?.capturedAt, cursor?.id ?: Long.MAX_VALUE, limit)
+                    val rows = db.assets().timeline(volumeId, cursor?.capturedAt, cursor?.id ?: Long.MAX_VALUE, limit)
                     val next = rows.lastOrNull()?.let { Cursor(it.capturedAt, it.id).encode() }
                     call.respond(
                         TimelineDto(
@@ -186,7 +188,7 @@ class HttpServer(
 
                 get("/api/v1/timeline/buckets") {
                     if (call.denied()) return@get
-                    call.respond(db.assets().monthBuckets().map { BucketDto(it.bucket, it.count, it.newestCapturedAt) })
+                    call.respond(db.assets().monthBuckets(volumeId).map { BucketDto(it.bucket, it.count, it.newestCapturedAt) })
                 }
 
                 get("/api/v1/assets/{id}") {
@@ -195,7 +197,7 @@ class HttpServer(
                         ?: return@get call.respond(HttpStatusCode.BadRequest, "bad id")
                     val asset = db.assets().byId(id)
                         ?: return@get call.respond(HttpStatusCode.NotFound, "no such asset")
-                    val file = db.assetFiles().canonical(id)
+                    val file = db.assetFiles().canonical(id, volumeId)
                     call.respond(
                         AssetDetailDto(
                             id = asset.id,
@@ -276,9 +278,9 @@ class HttpServer(
                     if (call.denied()) return@post
                     var examined = 0
                     var fixed = 0
-                    val weak = db.assets().withWeakDates(CaptureSource.MEDIASTORE, limit = 5000)
+                    val weak = db.assets().withWeakDates(volumeId, CaptureSource.MEDIASTORE, limit = 5000)
                     for (asset in weak) {
-                        val file = db.assetFiles().canonical(asset.id) ?: continue
+                        val file = db.assetFiles().canonical(asset.id, volumeId) ?: continue
                         examined++
                         val meta = try {
                             store.openRead(file.relPath).use {
@@ -314,7 +316,7 @@ class HttpServer(
                 get("/api/v1/sources") {
                     if (call.denied()) return@get
                     call.respond(
-                        db.assets().sourceAlbums().map { SourceDto(it.album, it.count, it.bytes) },
+                        db.assets().sourceAlbums(volumeId).map { SourceDto(it.album, it.count, it.bytes) },
                     )
                 }
 
@@ -326,7 +328,7 @@ class HttpServer(
                     // Either an explicit selection or a whole source album. Resolving the album to
                     // ids here means every op behaves identically whichever way it was addressed.
                     val ids = if (body.sourceAlbum != null) {
-                        db.assets().idsFromSource(body.sourceAlbum)
+                        db.assets().idsFromSource(volumeId, body.sourceAlbum)
                     } else {
                         body.ids
                     }
@@ -361,13 +363,13 @@ class HttpServer(
                 /** Empties the trash: everything soft-deleted is removed for real. */
                 post("/api/v1/trash/empty") {
                     if (call.denied()) return@post
-                    val ids = db.assets().trashed(limit = 10_000).map { it.id }
+                    val ids = db.assets().trashed(volumeId, limit = 10_000).map { it.id }
                     call.respond(BatchResultDto(purge(ids), "purge"))
                 }
 
                 get("/api/v1/trash") {
                     if (call.denied()) return@get
-                    val rows = db.assets().trashed(limit = 500)
+                    val rows = db.assets().trashed(volumeId, limit = 500)
                     call.respond(
                         rows.map {
                             TrashItemDto(
@@ -413,9 +415,9 @@ class HttpServer(
                         ?: return@post call.respond(HttpStatusCode.BadRequest, "bad body")
 
                     // Known bytes: answered before a single byte is transferred.
-                    val known = body.sha256?.let { db.assets().byHash(it.lowercase()) }
+                    val known = body.sha256?.let { uploads.knownIds(listOf(it.lowercase())).values.firstOrNull() }
                     if (known != null) {
-                        call.respond(UploadInitResultDto(null, 0, duplicate = true, assetId = known.id))
+                        call.respond(UploadInitResultDto(null, 0, duplicate = true, assetId = known))
                         return@post
                     }
                     val session = uploads.begin(
@@ -565,7 +567,7 @@ class HttpServer(
         val id = call.parameters["id"]?.toLongOrNull()
             ?: return call.respond(HttpStatusCode.BadRequest, "bad id")
         val asset = db.assets().byId(id) ?: return call.respond(HttpStatusCode.NotFound, "no such asset")
-        val file = db.assetFiles().canonical(id)
+        val file = db.assetFiles().canonical(id, volumeId)
             ?: return call.respond(HttpStatusCode.ServiceUnavailable, "file not currently resolvable")
 
         val entry = StoreEntry(
@@ -611,7 +613,9 @@ class HttpServer(
         var removed = 0
         for (id in ids) {
             val asset = db.assets().byId(id) ?: continue
-            db.assetFiles().forAsset(id).forEach { file ->
+            // Only files in the current location. A path recorded in another folder means nothing
+            // here, and deleting it here could remove an unrelated file that happens to share it.
+            db.assetFiles().forAsset(id).filter { it.volumeId == volumeId }.forEach { file ->
                 runCatching { store.delete(file.relPath) }
             }
             runCatching {
@@ -688,9 +692,9 @@ class HttpServer(
         // The walk is the disk's own answer, and it is what eviction is judged against.
         val thumbCacheDisk = thumbCache.diskBytes()
         return StatsDto(
-        assets = db.assets().count(),
-        trashed = db.assets().trashCount(),
-        libraryBytes = db.assets().totalBytes(),
+        assets = db.assets().count(volumeId),
+        trashed = db.assets().trashCount(volumeId),
+        libraryBytes = db.assets().totalBytes(volumeId),
         fingerprints = db.fingerprints().count(),
         missingFiles = db.assetFiles().missingCount(),
         gridThumbs = db.thumbnails().readyCount(ThumbSize.GRID),

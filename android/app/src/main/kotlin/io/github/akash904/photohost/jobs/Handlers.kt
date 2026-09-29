@@ -29,6 +29,7 @@ private const val TAG = "photohost"
 class ThumbnailHandler(
     private val db: AppDatabase,
     private val store: LibraryStore,
+    private val volumeId: Long,
     private val generator: ThumbnailGenerator,
 ) : JobHandler {
 
@@ -38,7 +39,7 @@ class ThumbnailHandler(
         val sizeClass = payload["sizeClass"]?.jsonPrimitive?.int ?: return Outcome.Fail("no sizeClass")
 
         val asset = db.assets().byId(assetId) ?: return Outcome.Fail("asset $assetId is gone")
-        val file = db.assetFiles().canonical(assetId)
+        val file = db.assetFiles().canonical(assetId, volumeId)
             ?: return Outcome.Blocked("no resolvable file for asset $assetId")
 
         if (!store.isMounted) return Outcome.Blocked("store not mounted")

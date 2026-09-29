@@ -35,6 +35,16 @@ data class SourceAlbumRow(val album: String, val count: Int, val bytes: Long)
 
 data class MonthBucket(val bucket: String, val count: Int, val newestCapturedAt: Long)
 
+/**
+ * Queries that list or count the library take the **current volume** -- the storage location the
+ * server is running on -- and include only assets with a file there.
+ *
+ * The index outlives a change of location: switch to a new folder without moving the photos and
+ * every asset is still in it, with its thumbnails cached. Listing them all showed a full grid of
+ * photos that could not be opened, because originals are only ever read from the current location.
+ * An asset whose file lives elsewhere reappears here when its location is selected again, or when
+ * a backup or scan puts a copy in this one.
+ */
 @Dao
 interface AssetDao {
 
@@ -58,11 +68,12 @@ interface AssetDao {
           AND (:cursorCapturedAt IS NULL
                OR captured_at < :cursorCapturedAt
                OR (captured_at = :cursorCapturedAt AND id < :cursorId))
+          AND EXISTS (SELECT 1 FROM asset_files f WHERE f.asset_id = assets.id AND f.volume_id = :volumeId)
         ORDER BY captured_at DESC, id DESC
         LIMIT :limit
         """,
     )
-    suspend fun timeline(cursorCapturedAt: Long?, cursorId: Long, limit: Int): List<TimelineRow>
+    suspend fun timeline(volumeId: Long, cursorCapturedAt: Long?, cursorId: Long, limit: Int): List<TimelineRow>
 
     /**
      * Counts per calendar month, for the drag scrubber. Grouped in the photo's *local* time, not
@@ -77,25 +88,32 @@ interface AssetDao {
                MAX(captured_at) AS newestCapturedAt
         FROM assets
         WHERE deleted_at IS NULL
+          AND EXISTS (SELECT 1 FROM asset_files f WHERE f.asset_id = assets.id AND f.volume_id = :volumeId)
         GROUP BY bucket
         ORDER BY bucket DESC
         """,
     )
-    suspend fun monthBuckets(): List<MonthBucket>
+    suspend fun monthBuckets(volumeId: Long): List<MonthBucket>
 
     @Query(
         """
         SELECT source_album AS album, COUNT(*) AS count, COALESCE(SUM(byte_size), 0) AS bytes
         FROM assets
         WHERE deleted_at IS NULL AND source_album IS NOT NULL
+          AND EXISTS (SELECT 1 FROM asset_files f WHERE f.asset_id = assets.id AND f.volume_id = :volumeId)
         GROUP BY source_album
         ORDER BY count DESC
         """,
     )
-    suspend fun sourceAlbums(): List<SourceAlbumRow>
+    suspend fun sourceAlbums(volumeId: Long): List<SourceAlbumRow>
 
-    @Query("SELECT id FROM assets WHERE deleted_at IS NULL AND source_album = :album")
-    suspend fun idsFromSource(album: String): List<Long>
+    @Query(
+        """
+        SELECT id FROM assets WHERE deleted_at IS NULL AND source_album = :album
+          AND EXISTS (SELECT 1 FROM asset_files f WHERE f.asset_id = assets.id AND f.volume_id = :volumeId)
+        """,
+    )
+    suspend fun idsFromSource(volumeId: Long, album: String): List<Long>
 
     @Query("SELECT * FROM assets WHERE id = :id")
     suspend fun byId(id: Long): AssetEntity?
@@ -110,14 +128,29 @@ interface AssetDao {
     @Query("SELECT * FROM assets WHERE head_hash = :headHash AND byte_size = :size")
     suspend fun byHeadHash(headHash: String, size: Long): List<AssetEntity>
 
-    @Query("SELECT COUNT(*) FROM assets WHERE deleted_at IS NULL")
-    suspend fun count(): Int
+    @Query(
+        """
+        SELECT COUNT(*) FROM assets WHERE deleted_at IS NULL
+          AND EXISTS (SELECT 1 FROM asset_files f WHERE f.asset_id = assets.id AND f.volume_id = :volumeId)
+        """,
+    )
+    suspend fun count(volumeId: Long): Int
 
-    @Query("SELECT COUNT(*) FROM assets WHERE deleted_at IS NOT NULL")
-    suspend fun trashCount(): Int
+    @Query(
+        """
+        SELECT COUNT(*) FROM assets WHERE deleted_at IS NOT NULL
+          AND EXISTS (SELECT 1 FROM asset_files f WHERE f.asset_id = assets.id AND f.volume_id = :volumeId)
+        """,
+    )
+    suspend fun trashCount(volumeId: Long): Int
 
-    @Query("SELECT COALESCE(SUM(byte_size), 0) FROM assets WHERE deleted_at IS NULL")
-    suspend fun totalBytes(): Long
+    @Query(
+        """
+        SELECT COALESCE(SUM(byte_size), 0) FROM assets WHERE deleted_at IS NULL
+          AND EXISTS (SELECT 1 FROM asset_files f WHERE f.asset_id = assets.id AND f.volume_id = :volumeId)
+        """,
+    )
+    suspend fun totalBytes(volumeId: Long): Long
 
     /**
      * IGNORE rather than REPLACE: the unique index on content_hash is the deduplication mechanism,
@@ -143,8 +176,14 @@ interface AssetDao {
     @Query("DELETE FROM assets WHERE id IN (:ids)")
     suspend fun purge(ids: List<Long>)
 
-    @Query("SELECT * FROM assets WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC LIMIT :limit")
-    suspend fun trashed(limit: Int): List<AssetEntity>
+    @Query(
+        """
+        SELECT * FROM assets WHERE deleted_at IS NOT NULL
+          AND EXISTS (SELECT 1 FROM asset_files f WHERE f.asset_id = assets.id AND f.volume_id = :volumeId)
+        ORDER BY deleted_at DESC LIMIT :limit
+        """,
+    )
+    suspend fun trashed(volumeId: Long, limit: Int): List<AssetEntity>
 
     @Query("UPDATE assets SET deleted_at = :now, updated_at = :now WHERE id IN (:ids)")
     suspend fun trash(ids: List<Long>, now: Long)
@@ -186,10 +225,11 @@ interface AssetDao {
         """
         SELECT * FROM assets
         WHERE deleted_at IS NULL AND captured_at_source > :maxSource
+          AND EXISTS (SELECT 1 FROM asset_files f WHERE f.asset_id = assets.id AND f.volume_id = :volumeId)
         ORDER BY id LIMIT :limit
         """,
     )
-    suspend fun withWeakDates(maxSource: Int, limit: Int): List<AssetEntity>
+    suspend fun withWeakDates(volumeId: Long, maxSource: Int, limit: Int): List<AssetEntity>
 
     /** Backfill order: newest first, because that is what anyone looks at first. */
     @Query(
@@ -197,11 +237,12 @@ interface AssetDao {
         SELECT a.id FROM assets a
         LEFT JOIN thumbnails t ON t.asset_id = a.id AND t.size_class = :sizeClass
         WHERE a.deleted_at IS NULL AND (t.state IS NULL OR t.state IN (0, 5))
+          AND EXISTS (SELECT 1 FROM asset_files f WHERE f.asset_id = a.id AND f.volume_id = :volumeId)
         ORDER BY a.captured_at DESC
         LIMIT :limit
         """,
     )
-    suspend fun needingThumbnails(sizeClass: Int, limit: Int): List<Long>
+    suspend fun needingThumbnails(volumeId: Long, sizeClass: Int, limit: Int): List<Long>
 }
 
 @Dao
@@ -213,9 +254,21 @@ interface AssetFileDao {
     @Query("SELECT * FROM asset_files WHERE asset_id = :assetId")
     suspend fun forAsset(assetId: Long): List<AssetFileEntity>
 
-    /** The canonical copy: what byte-serving routes resolve and stream. */
-    @Query("SELECT * FROM asset_files WHERE asset_id = :assetId AND role = 0 AND missing_since IS NULL LIMIT 1")
-    suspend fun canonical(assetId: Long): AssetFileEntity?
+    /**
+     * The canonical copy in the current location: what byte-serving routes resolve and stream.
+     *
+     * Scoped to [volumeId] because a path is only meaningful inside the location it was recorded
+     * in. Unscoped, an asset whose file lives in a folder no longer selected resolved to that path
+     * in the current folder -- where it is missing, or worse, where a different file sits.
+     */
+    @Query(
+        """
+        SELECT * FROM asset_files
+        WHERE asset_id = :assetId AND volume_id = :volumeId AND role = 0 AND missing_since IS NULL
+        LIMIT 1
+        """,
+    )
+    suspend fun canonical(assetId: Long, volumeId: Long): AssetFileEntity?
 
     @Query("SELECT * FROM asset_files WHERE volume_id = :volumeId AND rel_path = :relPath LIMIT 1")
     suspend fun byPath(volumeId: Long, relPath: String): AssetFileEntity?
@@ -234,6 +287,9 @@ interface AssetFileDao {
 
     @Query("SELECT * FROM asset_files WHERE volume_id = :volumeId ORDER BY id")
     suspend fun onVolume(volumeId: Long): List<AssetFileEntity>
+
+    @Query("SELECT * FROM asset_files WHERE volume_id = :volumeId ORDER BY id DESC LIMIT :limit")
+    suspend fun sampleOnVolume(volumeId: Long, limit: Int): List<AssetFileEntity>
 
     @Query("SELECT COUNT(*) FROM asset_files")
     suspend fun count(): Int

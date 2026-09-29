@@ -38,6 +38,8 @@ private const val TAG = "photohost"
 class UploadService(
     private val db: AppDatabase,
     private val store: LibraryStore,
+    /** The current location's row. "Already stored" means stored *here*; see [heldHere]. */
+    private val volumeId: Long,
     private val indexer: LibraryIndexer,
     stagingRoot: File,
 ) {
@@ -66,9 +68,21 @@ class UploadService(
     suspend fun knownIds(hashes: List<String>): Map<String, Long> {
         val out = LinkedHashMap<String, Long>()
         for (h in hashes.distinct()) {
-            db.assets().byHash(h)?.let { out[h] = it.id }
+            heldHere(h)?.let { out[h] = it }
         }
         return out
+    }
+
+    /**
+     * The asset with these bytes, if its file is in the current location.
+     *
+     * An asset whose only file is in a folder that is no longer selected is not in this library
+     * as far as anyone can see or open, so it is not "already stored": the upload goes ahead, and
+     * the indexer records the new copy against the existing asset, which brings it back.
+     */
+    private suspend fun heldHere(hash: String): Long? {
+        val asset = db.assets().byHash(hash.lowercase()) ?: return null
+        return asset.id.takeIf { db.assetFiles().canonical(it, volumeId) != null }
     }
 
     /**
@@ -88,7 +102,7 @@ class UploadService(
         for (h in hashes.distinct()) {
             val asset = db.assets().byHash(h.lowercase()) ?: continue
             if (asset.deletedAt != null) continue
-            val file = db.assetFiles().canonical(asset.id) ?: continue
+            val file = db.assetFiles().canonical(asset.id, volumeId) ?: continue
             val onDisk = withContext(Dispatchers.IO) { runCatching { store.stat(file.relPath) }.getOrNull() }
                 ?: continue
             if (onDisk.isDirectory || onDisk.size != asset.byteSize) continue
@@ -176,9 +190,9 @@ class UploadService(
         }
 
         // Already stored: drop the bytes and report success. Re-uploading is meant to be free.
-        db.assets().byHash(hash.contentHash)?.let {
+        heldHere(hash.contentHash)?.let {
             cleanup(id)
-            return FinishResult.Duplicate(it.id)
+            return FinishResult.Duplicate(it)
         }
 
         val relPath = destinationFor(session, hash.contentHash)

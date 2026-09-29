@@ -54,6 +54,14 @@ class SafStore(
     /** Where the granted tree sits relative to the volume root -- often "" but not always. */
     private val rootVolumePath: String = treeDocId.substringAfter(':', "")
 
+    /**
+     * Identifies this folder as a library location: the volume serial plus the folder's path on
+     * it, e.g. "primary:Pictures/PhotoHost". The serial alone was the key while a library could
+     * only be a USB drive, but two folders on the phone's own storage share the serial "primary",
+     * and the library could not tell them apart. Both halves survive a replug.
+     */
+    val locationKey: String = treeDocId
+
     override val kind = StoreKind.SAF
     // "primary" is the phone's own shared storage, which a folder can be picked on too.
     override val label: String get() = if (volumeKey == "primary") "Phone folder" else "USB $volumeKey"

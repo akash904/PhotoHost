@@ -138,7 +138,7 @@ class MediaServerService : Service() {
         val scanner = StoreScanner(store, indexer)
 
         val handlers: Map<String, JobHandler> = mapOf(
-            JobType.THUMBNAIL to ThumbnailHandler(container.db, store, generator),
+            JobType.THUMBNAIL to ThumbnailHandler(container.db, store, volumeId, generator),
             JobType.EVICT_CACHE to EvictCacheHandler(thumbCache),
             JobType.SCAN_VOLUME to ScanHandler(scanner) { p ->
                 ServerState.update {
@@ -161,6 +161,7 @@ class MediaServerService : Service() {
         val uploads = UploadService(
             db = container.db,
             store = store,
+            volumeId = volumeId,
             indexer = indexer,
             stagingRoot = File(filesDir, "staging"),
         )
@@ -176,6 +177,7 @@ class MediaServerService : Service() {
 
         val http = HttpServer(
             store = store,
+            volumeId = volumeId,
             db = container.db,
             assets = assets,
             thumbs = generator,

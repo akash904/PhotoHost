@@ -149,17 +149,25 @@ class AppContainer private constructor(context: Context) {
     /**
      * Registers the store as a volume and returns its row id, which `asset_files` points at.
      *
-     * The key is what must survive everything: "internal" for the phone, or the exFAT serial for a
-     * drive. Never the SAF tree URI -- that is a cache which can change on any replug.
+     * The key is what must survive everything: "internal" for app storage, or a folder's volume
+     * serial and path ([SafStore.locationKey]). Never the SAF tree URI -- that is a cache which can
+     * change on any replug.
+     *
+     * Libraries from before folders were told apart are keyed by the bare serial, which any folder
+     * on that volume would match. Such a row is adopted only by a folder that actually holds its
+     * files -- judged from a sample -- because after a switch without moving, the folder in use is
+     * not the one the files were recorded in, and adopting would put those photos back in a
+     * library that cannot open them.
      */
     suspend fun ensureVolume(store: LibraryStore): Long {
         val key = when (store) {
-            is SafStore -> store.volumeKey
+            is SafStore -> store.locationKey
             else -> "internal"
         }
         val cap = runCatching { store.capacity() }.getOrNull()
         val now = System.currentTimeMillis()
         val existing = db.volumes().byKey(key)
+            ?: (store as? SafStore)?.let { saf -> db.volumes().byKey(saf.volumeKey)?.takeIf { holdsFilesOf(saf, it.id) } }
         return db.volumes().upsert(
             VolumeEntity(
                 id = existing?.id ?: 0,
@@ -173,6 +181,12 @@ class AppContainer private constructor(context: Context) {
                 lastSeenAt = now,
             ),
         ).let { inserted -> if (inserted > 0) inserted else (db.volumes().byKey(key)?.id ?: -1L) }
+    }
+
+    /** True when the row has no files yet, or when some of a sample of them exist in [store]. */
+    private suspend fun holdsFilesOf(store: LibraryStore, volumeId: Long): Boolean {
+        val sample = db.assetFiles().sampleOnVolume(volumeId, 5)
+        return sample.isEmpty() || sample.any { runCatching { store.stat(it.relPath) }.getOrNull() != null }
     }
 
     companion object {
