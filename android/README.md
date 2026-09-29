@@ -23,7 +23,7 @@ A phone can do either, both, or neither. Browsing always speaks the HTTP API, po
 
 | Area | State |
 |---|---|
-| Storage abstraction | Internal storage and USB-OTG via SAF behind one interface |
+| Storage abstraction | App storage, or a chosen folder on the phone or a USB-OTG drive via SAF, behind one interface; resumable, verified moves between them |
 | Index | Room, SHA-256 identity, EXIF/video metadata, blurhash, job queue |
 | HTTP server | Ktor CIO in a `specialUse` foreground service, hand-rolled Range support |
 | Web UI | Justified grid, sticky date headers, month scrubber, viewer, select + delete, trash |
@@ -76,6 +76,13 @@ re-thumbnailing an entire library.
 ## Using it
 
 **Serve:** Settings → Server → Start. Then Show pairing code.
+
+**Choose where photos are kept:** Server → Storage, with the server stopped. App storage is
+deleted if the app is uninstalled; a folder you choose is not. On the phone that must be an empty
+folder (create one such as `Pictures/PhotoHost` from the picker), and it gets a `.nomedia` file so
+library photos do not appear a second time in the gallery. Switching offers to move the library:
+each file is copied, read back and checked against its hash before the original is deleted, and an
+interrupted move resumes where it stopped.
 
 **Connect another device:** install the same APK → Settings → Scan a pairing code. Any phone
 camera works too — the QR is an ordinary `http://host:port/pair?c=<token>` URL, which signs a

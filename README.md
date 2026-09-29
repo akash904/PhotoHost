@@ -17,7 +17,9 @@ run several, for example one on an old phone at home and one on your PC, and the
 between them.
 
 **On Android** (Android 10 or later)
-- Hosts a library on the phone itself, in its own storage or on a USB drive.
+- Hosts a library on the phone itself: in the app's own storage, or in a folder you choose on the
+  phone or a USB drive, which stays put if the app is uninstalled. Changing location moves the
+  photos across, checking each one before the original is removed.
 - Browses libraries on other phones and PCs: a fast timeline grid, day headers, a month rail and a
   drag handle to cross years at once, favourites, trash, HEIC and video.
 - **Backs up** the camera roll automatically (chosen folders, Wi-Fi only if you like), or photos
