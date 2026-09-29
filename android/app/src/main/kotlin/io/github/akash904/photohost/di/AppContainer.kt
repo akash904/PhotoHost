@@ -1,6 +1,7 @@
 package io.github.akash904.photohost.di
 
 import android.content.Context
+import android.net.Uri
 import io.github.akash904.photohost.core.AppDispatchers
 import io.github.akash904.photohost.core.Prefs
 import io.github.akash904.photohost.data.db.AppDatabase
@@ -140,10 +141,10 @@ class AppContainer private constructor(context: Context) {
     }
 
     /** Built fresh each time: the backend can change, and a SAF grant can be re-picked. */
-    fun buildStore(): LibraryStore {
-        val uri = prefs.treeUri
-        return if (prefs.backend == StoreKind.SAF.name && uri != null) SafStore(app, uri) else InternalStore(app)
-    }
+    fun buildStore(): LibraryStore = storeFor(prefs.backend, prefs.treeUri)
+
+    fun storeFor(backend: String, uri: Uri?): LibraryStore =
+        if (backend == StoreKind.SAF.name && uri != null) SafStore(app, uri) else InternalStore(app)
 
     /**
      * Registers the store as a volume and returns its row id, which `asset_files` points at.

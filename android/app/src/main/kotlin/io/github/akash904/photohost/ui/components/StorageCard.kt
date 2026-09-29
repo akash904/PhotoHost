@@ -3,55 +3,217 @@ package io.github.akash904.photohost.ui.components
 import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
-import androidx.activity.compose.ManagedActivityResultLauncher
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import io.github.akash904.photohost.core.Prefs
+import io.github.akash904.photohost.di.AppContainer
+import io.github.akash904.photohost.storage.LibraryMoveWorker
+import io.github.akash904.photohost.storage.MoveState
+import io.github.akash904.photohost.storage.SafStore
 import io.github.akash904.photohost.storage.StorageReadiness
 import io.github.akash904.photohost.storage.StoreKind
 import io.github.akash904.photohost.storage.storageReadiness
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** Written into a library folder on the phone, so re-picking it later is recognised as ours. */
+private const val MARKER = ".photohost-library"
+
 /**
- * A folder picker that remembers what it picked.
+ * Checks a picked folder and sets it up, returning why it was refused, or null when it is usable.
  *
- * Shared because the grant is the easy half to get wrong: without
- * `takePersistableUriPermission` the permission dies with the process, and the drive silently needs
- * re-picking after every reboot. Two copies of that would eventually become one copy that does it
- * and one that does not.
+ * A folder on the phone's own storage is different from one on a USB drive: Android's media index
+ * covers it, so the phone's gallery -- and PhotoHost's own backup and "Free up space" screens --
+ * would see the library's files as ordinary photos on the phone. Backing a library up into itself
+ * is merely pointless, but "Free up space" deleting photos because they are safely in the library
+ * would delete the library. So a phone folder gets a `.nomedia` file, which takes it out of the
+ * media index. That is also why it must be empty: `.nomedia` in a folder that already holds
+ * photos, say DCIM, would hide the person's own pictures from every gallery app. A folder that
+ * already carries [MARKER] is one PhotoHost set up before, and is fine to pick again.
+ *
+ * USB drives are left as they were: picking a drive that already holds photos, and having them
+ * indexed, is a use this was built for.
+ */
+private fun prepareFolder(context: android.content.Context, uri: Uri): String? {
+    val volume = runCatching { DocumentsContract.getTreeDocumentId(uri).substringBefore(':') }
+        .getOrNull() ?: return "That folder cannot be used."
+    if (volume != "primary") return null
+    return try {
+        val store = SafStore(context, uri)
+        val names = store.list("").map { it.name }
+        if (names.isNotEmpty() && MARKER !in names) {
+            return "Choose an empty folder. This one already has files in it, and the library " +
+                "would hide them from your gallery. You can make a new folder from the picker."
+        }
+        if (MARKER !in names) store.openWrite(MARKER, "application/octet-stream").use { }
+        if (".nomedia" !in names) store.openWrite(".nomedia", "application/octet-stream").use { }
+        null
+    } catch (t: Throwable) {
+        "PhotoHost could not write to that folder."
+    }
+}
+
+/** "Phone storage › Pictures/PhotoHost" or "USB 1234-5678 › Photos", from a tree URI. */
+fun describeFolder(treeUri: Uri?): String? {
+    val docId = treeUri?.let { runCatching { DocumentsContract.getTreeDocumentId(it) }.getOrNull() }
+        ?: return null
+    val volume = docId.substringBefore(':')
+    val path = docId.substringAfter(':', "")
+    val where = if (volume == "primary") "Phone storage" else "USB $volume"
+    return if (path.isEmpty()) where else "$where › $path"
+}
+
+private fun describe(backend: String, tree: Uri?): String =
+    if (backend == StoreKind.SAF.name) describeFolder(tree) ?: "the folder you chose" else "app storage"
+
+/** Opens the folder picker, and switches to app storage; both ask about moving the photos. */
+class LocationChanger(val chooseFolder: () -> Unit, val switchTo: (backend: String, tree: Uri?) -> Unit)
+
+/**
+ * Changing where the library lives, shared by the Storage card and the setup screen.
+ *
+ * A change of location offers to bring the photos along. Without that, a library switched to a new
+ * folder looks empty -- the files are still in the old place and the server only looks in one --
+ * which was recoverable but alarming, and left the person to move files by hand, which the
+ * library's records would not have followed. Moving is the default; switching without moving stays
+ * possible, and is the only choice when the current location cannot be reached.
+ *
+ * With no photos yet there is nothing to ask, so the switch just happens.
  */
 @Composable
-fun rememberDrivePicker(prefs: Prefs, onPicked: () -> Unit): ManagedActivityResultLauncher<Uri?, Uri?> {
+fun rememberLocationChanger(prefs: Prefs, onChanged: () -> Unit): LocationChanger {
     val context = LocalContext.current
-    return rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
-        if (uri != null) {
-            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            runCatching { context.contentResolver.takePersistableUriPermission(uri, flags) }
-            prefs.treeUri = uri
-            // Picking a drive is the whole statement of intent; leaving the backend on internal
-            // afterwards would mean choosing a drive and not using it.
-            prefs.backend = StoreKind.SAF.name
-            onPicked()
+    val scope = rememberCoroutineScope()
+
+    data class Proposal(val backend: String, val tree: Uri?, val files: Int, val canMove: Boolean)
+
+    var refusal by remember { mutableStateOf<String?>(null) }
+    var proposal by remember { mutableStateOf<Proposal?>(null) }
+
+    fun apply(backend: String, tree: Uri?) {
+        prefs.backend = backend
+        if (tree != null) prefs.treeUri = tree
+        onChanged()
+    }
+
+    fun propose(backend: String, tree: Uri?) {
+        scope.launch {
+            val container = AppContainer.get(context)
+            val (files, reachable) = withContext(Dispatchers.IO) {
+                val store = container.buildStore()
+                val files = container.db.assetFiles().onVolume(container.ensureVolume(store)).size
+                files to (storageReadiness(context, prefs.backend, prefs.treeUri) == StorageReadiness.READY)
+            }
+            if (files == 0) apply(backend, tree) else proposal = Proposal(backend, tree, files, reachable)
         }
+    }
+
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        // Persisting the grant is the easy half to get wrong: without it the permission dies with
+        // the process, and the folder silently needs re-picking after every reboot.
+        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        runCatching { context.contentResolver.takePersistableUriPermission(uri, flags) }
+        val reason = prepareFolder(context, uri)
+        if (reason != null) {
+            // Released again, so a refused folder does not linger among the app's grants.
+            runCatching { context.contentResolver.releasePersistableUriPermission(uri, flags) }
+            refusal = reason
+        } else {
+            propose(StoreKind.SAF.name, uri)
+        }
+    }
+
+    refusal?.let { reason ->
+        AlertDialog(
+            onDismissRequest = { refusal = null },
+            title = { Text("Choose a different folder") },
+            text = { Text(reason) },
+            confirmButton = {
+                TextButton(onClick = {
+                    refusal = null
+                    picker.launch(null)
+                }) { Text("Choose again") }
+            },
+            dismissButton = { TextButton(onClick = { refusal = null }) { Text("Cancel") } },
+        )
+    }
+
+    proposal?.let { p ->
+        val here = describe(prefs.backend, prefs.treeUri)
+        val there = describe(p.backend, p.tree)
+        AlertDialog(
+            onDismissRequest = { proposal = null },
+            title = { Text(if (p.canMove) "Move your photos too?" else "Switch without your photos?") },
+            text = {
+                Text(
+                    if (p.canMove) {
+                        "${p.files} files are kept in $here. Move them to $there? Each one is " +
+                            "copied and checked before the original is deleted, and the server " +
+                            "stays off until the move is done."
+                    } else {
+                        "$here cannot be reached, so its ${p.files} files cannot be moved. If you " +
+                            "switch anyway they will be missing from the library until you switch back."
+                    },
+                )
+            },
+            confirmButton = {
+                if (p.canMove) {
+                    TextButton(onClick = {
+                        proposal = null
+                        prefs.beginMove(p.backend, p.tree)
+                        LibraryMoveWorker.start(context)
+                        onChanged()
+                    }) { Text("Move") }
+                } else {
+                    TextButton(onClick = {
+                        proposal = null
+                        apply(p.backend, p.tree)
+                    }) { Text("Switch") }
+                }
+            },
+            dismissButton = {
+                Row {
+                    if (p.canMove) {
+                        TextButton(onClick = {
+                            proposal = null
+                            apply(p.backend, p.tree)
+                        }) { Text("Don't move") }
+                    }
+                    TextButton(onClick = { proposal = null }) { Text("Cancel") }
+                }
+            },
+        )
+    }
+
+    return remember(picker) {
+        LocationChanger(
+            chooseFolder = { picker.launch(null) },
+            switchTo = { backend, tree -> propose(backend, tree) },
+        )
     }
 }
 
@@ -69,12 +231,8 @@ fun rememberDrivePicker(prefs: Prefs, onPicked: () -> Unit): ManagedActivityResu
  * so offering the control while running would be a switch that silently does not work. The Probe
  * screen already took this position; this keeps it and says why out loud.
  *
- * ### Why switching asks first
- *
- * Nothing is deleted, but `asset_files` rows keep pointing at the volume they were indexed on, so
- * photos held in the other location stop resolving the moment the active store is a different one.
- * They come back when that location is selected again. That is recoverable and completely alarming
- * if it happens without warning, which is the case a confirmation exists for.
+ * It also locks while a move is running or unfinished, for the same reason the server will not
+ * start then: the library is in two places at once.
  */
 @Composable
 fun StorageCard(prefs: Prefs, serverRunning: Boolean, modifier: Modifier = Modifier) {
@@ -82,49 +240,21 @@ fun StorageCard(prefs: Prefs, serverRunning: Boolean, modifier: Modifier = Modif
 
     var probeKey by remember { mutableIntStateOf(0) }
     var readiness by remember { mutableStateOf<StorageReadiness?>(null) }
-    var pendingSwitch by remember { mutableStateOf<StoreKind?>(null) }
+    val move by MoveState.state.collectAsState()
 
-    val backend = remember(probeKey) { prefs.backend }
-    val treeUri = remember(probeKey) { prefs.treeUri }
+    val backend = remember(probeKey, move.running) { prefs.backend }
+    val treeUri = remember(probeKey, move.running) { prefs.treeUri }
+    val unfinishedMove = remember(probeKey, move.running) { prefs.moveTarget }
     val usingSaf = backend == StoreKind.SAF.name
+    val folder = remember(treeUri) { describeFolder(treeUri) }
+    val locked = serverRunning || move.running || unfinishedMove != null
 
-    val volumeKey = remember(treeUri) {
-        treeUri?.let {
-            runCatching { DocumentsContract.getTreeDocumentId(it).substringBefore(':') }.getOrNull()
-        }
-    }
-
-    LaunchedEffect(probeKey) {
+    LaunchedEffect(probeKey, move.running) {
         // Off the main thread: on a drive that has been pulled this waits for a Binder timeout.
         readiness = withContext(Dispatchers.IO) { storageReadiness(context, backend, treeUri) }
     }
 
-    val picker = rememberDrivePicker(prefs) { probeKey++ }
-
-    pendingSwitch?.let { target ->
-        AlertDialog(
-            onDismissRequest = { pendingSwitch = null },
-            title = { Text("Change where photos are kept?") },
-            text = {
-                Text(
-                    "Nothing is deleted. Photos already stored in the other place stay exactly " +
-                        "where they are, but they will not appear in your library until you " +
-                        "switch back to it.",
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    prefs.backend = target.name
-                    pendingSwitch = null
-                    probeKey++
-                    if (target == StoreKind.SAF && prefs.treeUri == null) picker.launch(null)
-                }) { Text("Change") }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingSwitch = null }) { Text("Cancel") }
-            },
-        )
-    }
+    val changer = rememberLocationChanger(prefs) { probeKey++ }
 
     SettingsCard(modifier) {
         CardHeader {
@@ -132,24 +262,53 @@ fun StorageCard(prefs: Prefs, serverRunning: Boolean, modifier: Modifier = Modif
                 StatusDot(active = readiness == StorageReadiness.READY)
                 Text(
                     text = when {
-                        !usingSaf -> "Kept on this phone"
-                        volumeKey != null -> "Kept on USB $volumeKey"
-                        else -> "No drive chosen yet"
+                        !usingSaf -> "Kept in app storage"
+                        folder != null -> "Kept in a folder you chose"
+                        else -> "No folder chosen yet"
                     },
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(start = 10.dp),
                 )
             }
             MonoLine(
-                if (usingSaf) treeUri?.toString() ?: "no drive picked"
+                if (usingSaf) folder ?: "no folder picked"
                 else "Android/data/io.github.akash904.photohost/files/library",
             )
             if (readiness == StorageReadiness.FOLDER_MISSING) {
                 Text(
-                    "This drive cannot be reached — either it is unplugged, or permission to it " +
-                        "was lost. The server falls back to this phone's storage until it is fixed.",
+                    "This folder cannot be reached — its drive is unplugged, or permission to it " +
+                        "was lost. The server falls back to app storage until it is fixed.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
+                )
+            }
+            when {
+                move.running -> {
+                    Text(
+                        "Moving the library… ${move.done} of ${move.total}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    LinearProgressIndicator(
+                        progress = { if (move.total == 0) 0f else move.done.toFloat() / move.total },
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    )
+                }
+                unfinishedMove != null -> {
+                    Text(
+                        (move.message?.let { "$it " } ?: "") +
+                            "The library is partway through moving to " +
+                            "${describe(unfinishedMove.first, unfinishedMove.second)}, so the " +
+                            "server cannot start until it finishes.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    TextButton(onClick = { LibraryMoveWorker.start(context) }) { Text("Resume the move") }
+                }
+                move.message != null -> Text(
+                    move.message!!,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (move.failed) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             if (serverRunning) {
@@ -162,39 +321,52 @@ fun StorageCard(prefs: Prefs, serverRunning: Boolean, modifier: Modifier = Modif
         }
         RowDivider()
         SettingsRow(
-            title = "This phone",
-            subtitle = "App-private storage. Always available, limited to the phone's own space.",
-            enabled = !serverRunning,
-            onClick = { if (usingSaf) pendingSwitch = StoreKind.INTERNAL },
+            title = "App storage",
+            subtitle = "Private to PhotoHost and always available, but deleted if the app is " +
+                "uninstalled.",
+            enabled = !locked,
+            onClick = { if (usingSaf) changer.switchTo(StoreKind.INTERNAL.name, null) },
             trailing = {
                 RadioButton(
                     selected = !usingSaf,
-                    enabled = !serverRunning,
-                    onClick = { if (usingSaf) pendingSwitch = StoreKind.INTERNAL },
+                    enabled = !locked,
+                    onClick = { if (usingSaf) changer.switchTo(StoreKind.INTERNAL.name, null) },
                 )
             },
         )
         RowDivider()
         SettingsRow(
-            title = "USB drive",
-            subtitle = "A drive plugged into this phone. Needs a powered hub on most handsets.",
-            enabled = !serverRunning,
-            onClick = { if (!usingSaf) pendingSwitch = StoreKind.SAF },
+            title = "A folder you choose",
+            subtitle = "On this phone or a USB drive. Stays put if the app is uninstalled.",
+            enabled = !locked,
+            onClick = { if (!usingSaf) useFolder(changer, treeUri) },
             trailing = {
                 RadioButton(
                     selected = usingSaf,
-                    enabled = !serverRunning,
-                    onClick = { if (!usingSaf) pendingSwitch = StoreKind.SAF },
+                    enabled = !locked,
+                    onClick = { if (!usingSaf) useFolder(changer, treeUri) },
                 )
             },
         )
         RowDivider()
         SettingsRow(
-            title = if (treeUri == null) "Choose a drive" else "Choose a different drive",
-            subtitle = "Pick the folder on the drive that should hold the library",
+            title = if (treeUri == null) "Choose a folder" else "Choose a different folder",
+            subtitle = "On this phone, pick or create an empty folder, such as Pictures/PhotoHost",
             value = "›",
-            enabled = !serverRunning,
-            onClick = { picker.launch(null) },
+            enabled = !locked,
+            onClick = { changer.chooseFolder() },
         )
     }
+}
+
+/**
+ * True while a library move runs, for the Start buttons: the server refuses to start then anyway,
+ * and a button that can only produce an error should not be offered.
+ */
+@Composable
+fun libraryMoving(): Boolean = MoveState.state.collectAsState().value.running
+
+/** Back to the folder used before, when there is one; otherwise pick one. */
+private fun useFolder(changer: LocationChanger, treeUri: Uri?) {
+    if (treeUri == null) changer.chooseFolder() else changer.switchTo(StoreKind.SAF.name, treeUri)
 }

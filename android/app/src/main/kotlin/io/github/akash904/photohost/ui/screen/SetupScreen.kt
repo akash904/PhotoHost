@@ -37,7 +37,8 @@ import io.github.akash904.photohost.service.ServerState
 import io.github.akash904.photohost.storage.StorageReadiness
 import io.github.akash904.photohost.storage.StoreKind
 import io.github.akash904.photohost.storage.storageReadiness
-import io.github.akash904.photohost.ui.components.rememberDrivePicker
+import io.github.akash904.photohost.ui.components.describeFolder
+import io.github.akash904.photohost.ui.components.rememberLocationChanger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -96,7 +97,7 @@ fun SetupScreen(
         if (server.error != null) starting = false
     }
 
-    val picker = rememberDrivePicker(prefs) { probeKey++ }
+    val changer = rememberLocationChanger(prefs) { probeKey++ }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
@@ -137,25 +138,28 @@ fun SetupScreen(
 
                     StorageReadiness.FOLDER_MISSING -> {
                         Text(
-                            "This phone is set up to use a USB drive, but it cannot be reached — " +
-                                "either it is unplugged, or permission to it was lost.",
+                            "This phone is set up to keep photos in a folder that cannot be " +
+                                "reached — its drive is unplugged, or permission to it was lost.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error,
                         )
                         Spacer(Modifier.height(12.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { picker.launch(null) }) { Text("Choose folder") }
+                            Button(onClick = { changer.chooseFolder() }) { Text("Choose folder") }
                             OutlinedButton(onClick = {
-                                prefs.backend = StoreKind.INTERNAL.name
-                                probeKey++
-                            }) { Text("Use this phone instead") }
+                                changer.switchTo(StoreKind.INTERNAL.name, null)
+                            }) { Text("Use app storage instead") }
                         }
                     }
 
                     StorageReadiness.READY -> {
                         Text(
-                            "Photos will be kept on " +
-                                if (backend == StoreKind.SAF.name) "the USB drive." else "this phone.",
+                            if (backend == StoreKind.SAF.name) {
+                                "Photos will be kept in ${describeFolder(prefs.treeUri) ?: "the folder you chose"}."
+                            } else {
+                                "Photos will be kept in this app's storage, which is deleted if " +
+                                    "the app is uninstalled."
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -179,7 +183,17 @@ fun SetupScreen(
                                     MediaServerService.start(context)
                                 },
                                 modifier = Modifier.fillMaxWidth(),
+                                enabled = !io.github.akash904.photohost.ui.components.libraryMoving(),
                             ) { Text("Start serving") }
+                            TextButton(
+                                onClick = { changer.chooseFolder() },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(
+                                    if (backend == StoreKind.SAF.name) "Choose a different folder"
+                                    else "Keep them in a folder I choose",
+                                )
+                            }
                         }
                     }
                 }

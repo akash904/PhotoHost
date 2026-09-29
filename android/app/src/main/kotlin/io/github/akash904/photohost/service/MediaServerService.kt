@@ -121,6 +121,10 @@ class MediaServerService : Service() {
     }
 
     private suspend fun bringUp() {
+        // A half-finished move leaves files in two places, and the server only looks in one.
+        check(container.prefs.moveTarget == null) {
+            "The library is partway through moving. Finish the move in Settings, then start again."
+        }
         val store = container.buildStore()
         val volumeId = container.ensureVolume(store)
         val port = container.prefs.port

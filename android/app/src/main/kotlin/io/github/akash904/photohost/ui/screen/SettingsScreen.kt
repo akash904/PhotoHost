@@ -633,7 +633,10 @@ fun SettingsScreen(
                     if (server.running) {
                         OutlinedButton(onClick = { MediaServerService.stop(context) }) { Text("Stop") }
                     } else {
-                        Button(onClick = { MediaServerService.start(context) }) { Text("Start") }
+                        Button(
+                            onClick = { MediaServerService.start(context) },
+                            enabled = !io.github.akash904.photohost.ui.components.libraryMoving(),
+                        ) { Text("Start") }
                     }
                 }
                 if (server.running) {

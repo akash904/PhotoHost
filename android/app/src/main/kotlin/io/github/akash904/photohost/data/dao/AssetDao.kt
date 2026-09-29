@@ -232,6 +232,12 @@ interface AssetFileDao {
     @Query("SELECT COUNT(*) FROM asset_files WHERE missing_since IS NOT NULL")
     suspend fun missingCount(): Int
 
+    @Query("SELECT * FROM asset_files WHERE volume_id = :volumeId ORDER BY id")
+    suspend fun onVolume(volumeId: Long): List<AssetFileEntity>
+
+    @Query("SELECT COUNT(*) FROM asset_files")
+    suspend fun count(): Int
+
     @Query("DELETE FROM asset_files WHERE id = :id")
     suspend fun delete(id: Long)
 }

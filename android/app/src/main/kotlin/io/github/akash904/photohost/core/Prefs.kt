@@ -32,6 +32,37 @@ class Prefs(context: Context) {
         get() = p.getString(KEY_TREE, null)?.let(Uri::parse)
         set(v) = p.edit().putString(KEY_TREE, v?.toString()).apply()
 
+    /**
+     * Where a library move is headed, while one is unfinished: "INTERNAL", or "SAF" plus a tree URI.
+     *
+     * Persisted rather than held in memory because a move is done file by file, and until it ends
+     * the library is split between two places. If the process dies halfway, this is what says so:
+     * the server refuses to start and the Storage card offers to resume, instead of serving a
+     * library with half its files unreachable.
+     */
+    val moveTarget: Pair<String, Uri?>?
+        get() = p.getString(KEY_MOVE_BACKEND, null)?.let { it to p.getString(KEY_MOVE_TREE, null)?.let(Uri::parse) }
+
+    fun beginMove(backend: String, tree: Uri?) {
+        p.edit().putString(KEY_MOVE_BACKEND, backend).putString(KEY_MOVE_TREE, tree?.toString()).commit()
+    }
+
+    /** Drops a move that never started moving anything. */
+    fun cancelMove() {
+        p.edit().remove(KEY_MOVE_BACKEND).remove(KEY_MOVE_TREE).commit()
+    }
+
+    /** Switches to the move's destination and clears it, in one write, so neither can happen alone. */
+    fun finishMove() {
+        val (backend, tree) = moveTarget ?: return
+        p.edit()
+            .putString(KEY_BACKEND, backend)
+            .apply { if (tree != null) putString(KEY_TREE, tree.toString()) }
+            .remove(KEY_MOVE_BACKEND)
+            .remove(KEY_MOVE_TREE)
+            .commit()
+    }
+
     var port: Int
         get() = p.getInt(KEY_PORT, 8080)
         set(v) = p.edit().putInt(KEY_PORT, v).apply()
@@ -368,6 +399,8 @@ class Prefs(context: Context) {
     private companion object {
         const val KEY_BACKEND = "backend"
         const val KEY_TREE = "treeUri"
+        const val KEY_MOVE_BACKEND = "moveTargetBackend"
+        const val KEY_MOVE_TREE = "moveTargetTree"
         const val KEY_PORT = "port"
         const val KEY_AUTOSTART = "autostart"
         const val KEY_WAS_RUNNING = "wasRunning"

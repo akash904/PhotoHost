@@ -84,7 +84,10 @@ fun ServerScreen(prefs: Prefs, server: ServerState.Snapshot, modifier: Modifier 
                                 Text("Stop")
                             }
                         } else {
-                            Button(onClick = { MediaServerService.start(context) }) { Text("Start") }
+                            Button(
+                                onClick = { MediaServerService.start(context) },
+                                enabled = !io.github.akash904.photohost.ui.components.libraryMoving(),
+                            ) { Text("Start") }
                         }
                     }
 
