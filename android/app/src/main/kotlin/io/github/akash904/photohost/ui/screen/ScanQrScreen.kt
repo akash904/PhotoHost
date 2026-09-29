@@ -42,10 +42,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.barcode.common.Barcode
-import com.google.mlkit.vision.common.InputImage
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.BinaryBitmap
+import com.google.zxing.DecodeHintType
+import com.google.zxing.PlanarYUVLuminanceSource
+import com.google.zxing.ReaderException
+import com.google.zxing.common.HybridBinarizer
+import com.google.zxing.qrcode.QRCodeReader
 import io.github.akash904.photohost.core.Prefs
+import java.util.concurrent.Executors
 
 private const val TAG = "photohost"
 
@@ -93,9 +98,10 @@ fun parsePairing(raw: String?): PairingInfo? {
 /**
  * Scans a pairing QR with the camera.
  *
- * Uses CameraX with ML Kit's bundled barcode model rather than the Play Services scanner, so
- * pairing keeps working on a device without Google Play — which is exactly the sort of device
- * someone self-hosting is likely to be using.
+ * Uses CameraX with zxing, which is plain Java running on the phone. It was ML Kit before, and
+ * ML Kit sends usage and diagnostics data to Google even with its bundled model -- the one thing
+ * a private photo library cannot say it does. Neither needs Google Play, so pairing still works
+ * on a device without it.
  */
 @Composable
 fun ScanQrScreen(prefs: Prefs, onPaired: (io.github.akash904.photohost.core.LibraryProfile) -> Unit, onClose: () -> Unit) {
@@ -109,6 +115,8 @@ fun ScanQrScreen(prefs: Prefs, onPaired: (io.github.akash904.photohost.core.Libr
     }
     var status by remember { mutableStateOf<String?>(null) }
     var handled by remember { mutableStateOf(false) }
+    val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
+    DisposableEffect(Unit) { onDispose { analysisExecutor.shutdown() } }
 
     val askCamera = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         granted = it
@@ -136,19 +144,23 @@ fun ScanQrScreen(prefs: Prefs, onPaired: (io.github.akash904.photohost.core.Libr
                                 val preview = Preview.Builder().build().also {
                                     it.surfaceProvider = previewView.surfaceProvider
                                 }
-                                val scanner = BarcodeScanning.getClient()
+                                val reader = QRCodeReader()
                                 val analysis = ImageAnalysis.Builder()
                                     // Dropping stale frames keeps the scan responsive; a queued
                                     // backlog would decode images from seconds ago.
                                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                                     .build()
-                                analysis.setAnalyzer(executor) { proxy ->
-                                    processFrame(proxy, scanner) { value ->
-                                        if (handled) return@processFrame
+                                // zxing decodes synchronously, so frames are read off the main
+                                // thread and only a found code is handed back to it.
+                                analysis.setAnalyzer(analysisExecutor) { proxy ->
+                                    val found = decodeQr(proxy, reader) ?: return@setAnalyzer
+                                    executor.execute {
+                                        val value = found
+                                        if (handled) return@execute
                                         val info = parsePairing(value)
                                         if (info == null) {
                                             status = "That QR is not a pairing code."
-                                            return@processFrame
+                                            return@execute
                                         }
                                         handled = true
                                         // Added to the list of libraries, or updated if this one is
@@ -177,7 +189,7 @@ fun ScanQrScreen(prefs: Prefs, onPaired: (io.github.akash904.photohost.core.Libr
                             } catch (t: Throwable) {
                                 // The exception class belongs in the log, not on screen. "Camera
                                 // unavailable: NullPointerException" was shown for a stripped ML Kit
-                                // registrar, and read as a refused permission -- it sent the reader
+                                // registrar (in the ML Kit days), and read as a refused permission -- it sent the reader
                                 // to re-grant a permission that was already granted, which is the
                                 // one thing that could not help. What a person can act on is that
                                 // the camera did not open, and that there is another way in.
@@ -252,28 +264,40 @@ fun ScanQrScreen(prefs: Prefs, onPaired: (io.github.akash904.photohost.core.Libr
     }
 }
 
+private val QR_HINTS = mapOf(DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE))
+
 /**
- * Feeds one camera frame to the barcode scanner.
+ * Looks for a QR code in one camera frame, returning its text or null.
+ *
+ * Only the luminance (Y) plane is read, which is all a QR decoder needs, and rotation is ignored
+ * because zxing finds a QR code at any angle. The plane's rows can be padded past the image width,
+ * so they are copied one at a time rather than assumed contiguous.
  *
  * `proxy.close()` has to happen exactly once, on every path including failure -- an unclosed frame
  * stalls the whole analysis pipeline after a couple of frames and the preview simply freezes.
  */
-@androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
-private fun processFrame(
-    proxy: ImageProxy,
-    scanner: com.google.mlkit.vision.barcode.BarcodeScanner,
-    onFound: (String?) -> Unit,
-) {
-    val media = proxy.image
-    if (media == null) {
-        proxy.close()
-        return
-    }
-    val image = InputImage.fromMediaImage(media, proxy.imageInfo.rotationDegrees)
-    scanner.process(image)
-        .addOnSuccessListener { codes ->
-            codes.firstOrNull { it.format == Barcode.FORMAT_QR_CODE }?.rawValue?.let(onFound)
+private fun decodeQr(proxy: ImageProxy, reader: QRCodeReader): String? {
+    try {
+        val plane = proxy.planes[0]
+        val buffer = plane.buffer
+        val width = proxy.width
+        val height = proxy.height
+        val stride = plane.rowStride
+        val luma = ByteArray(width * height)
+        for (row in 0 until height) {
+            buffer.position(row * stride)
+            buffer.get(luma, row * width, width)
         }
-        .addOnFailureListener { Log.w(TAG, "barcode scan failed: ${it.message}") }
-        .addOnCompleteListener { proxy.close() }
+        val source = PlanarYUVLuminanceSource(luma, width, height, 0, 0, width, height, false)
+        return reader.decode(BinaryBitmap(HybridBinarizer(source)), QR_HINTS).text
+    } catch (_: ReaderException) {
+        // No code in this frame, or one too blurred to read -- the normal case, not an error.
+        return null
+    } catch (t: Throwable) {
+        Log.w(TAG, "qr decode failed: ${t.message}")
+        return null
+    } finally {
+        reader.reset()
+        proxy.close()
+    }
 }

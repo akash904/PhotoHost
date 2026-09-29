@@ -16,15 +16,8 @@ developer receives nothing from your use of the app.
   its access token and its certificate fingerprint. These stay on your device.
 - **Where things happen.** Photos, thumbnails and the library index stay on the devices that make up
   your libraries. Nothing is uploaded to the developer or to any cloud service by PhotoHost.
-
-## The one exception: the QR scanner
-
-To scan pairing codes, the Android app uses **Google ML Kit**, which reads the code on the phone.
-Google states that ML Kit sends Google device information (such as manufacturer, model and OS
-version), app information, performance metrics, configuration and error codes, for diagnostics and
-usage analytics, encrypted in transit and not shared with third parties. It does not send your
-photos or the contents of the code. See Google's
-[ML Kit data disclosure](https://developers.google.com/ml-kit/android-data-disclosure).
+- **Pairing codes.** The camera reads a pairing code on the phone itself. The camera image is not
+  stored or sent anywhere.
 
 ## Networks and third parties you choose
 

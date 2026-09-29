@@ -164,13 +164,12 @@ dependencies {
     implementation(libs.androidx.media3.datasource.okhttp)
     implementation(libs.androidx.work.runtime)
 
-    // QR pairing. zxing:core is pure Java and generation-only; the scanner side uses CameraX with
-    // ML Kit's bundled model, so pairing does not depend on Google Play Services being present.
+    // QR pairing. zxing:core is pure Java and both draws and reads the codes, with CameraX
+    // supplying frames. Nothing here talks to Google, and nothing needs Play Services.
     implementation(libs.zxing.core)
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
-    implementation(libs.mlkit.barcode)
 
     // Present ONLY so probe 6 can benchmark DocumentFile.listFiles() against a raw
     // DocumentsContract query. Production code must never use DocumentFile for scanning.

@@ -40,26 +40,13 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 
-# ---------------------------------------------------------------- ML Kit (the QR scanner)
-#
-# ML Kit discovers its components by reading registrar class names out of manifest metadata and
-# calling their no-argument constructors. R8 sees those names only as strings, so it keeps the
-# classes and deletes the constructors that nothing appears to call. Discovery then fails with
-# NoSuchMethodException for every registrar, the barcode client is never built, and the null that
-# leaves behind surfaces as a NullPointerException while binding the camera -- which the scanner
-# reports as "camera unavailable", indistinguishable from a refused permission.
-#
-# Found by running the release build. The scanner works perfectly in debug.
--keep class com.google.mlkit.** { *; }
--keep class * implements com.google.firebase.components.ComponentRegistrar { <init>(); }
-
 # ---------------------------------------------------------------- CameraX
 #
 # Precautionary rather than diagnosed. CameraX resolves its camera2 backend reflectively through a
-# manifest-declared MetadataHolderService, which is the same shape of problem, and it was the first
-# suspect for the scanner failure above. It turned out not to be the cause -- CameraX initialises
-# fine without these -- but the reflection is real and the rules are cheap, so they stay as cover
-# for devices whose behaviour differs.
+# manifest-declared MetadataHolderService. It was the first suspect when the old ML Kit scanner
+# failed in release (ML Kit's own reflection was the real cause, and ML Kit is gone), and CameraX
+# initialises fine without these -- but the reflection is real and the rules are cheap, so they
+# stay as cover for devices whose behaviour differs. zxing uses no reflection and needs no rules.
 -keep class androidx.camera.camera2.Camera2Config { *; }
 -keep class androidx.camera.camera2.Camera2Config$DefaultProvider { *; }
 -keep class androidx.camera.core.impl.MetadataHolderService { *; }
