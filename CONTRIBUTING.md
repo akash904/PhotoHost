@@ -9,10 +9,20 @@ public issues.
 Please open an issue first for anything larger than a small fix, so the approach can be agreed
 before you spend time on it.
 
-**Contributor licence.** PhotoHost is licensed under the AGPL-3.0, and its author may also want to
-offer it under other terms in future. Contributions of code will therefore need a Contributor
-Licence Agreement. One is not set up yet, so code pull requests cannot be merged for now; issues,
-reports and testing are very welcome in the meantime.
+## Contributor terms
+
+Pull requests are welcome, and there is nothing separate to sign. By submitting a contribution you
+agree that:
+
+1. **You have the right to submit it:** it is your own work, or you have permission to contribute
+   it. This is the [Developer Certificate of Origin](https://developercertificate.org/).
+2. **It is licensed under the AGPL-3.0,** like the rest of PhotoHost.
+3. **The project's author may also distribute it under other licence terms,** for example if
+   PhotoHost is ever offered under an additional licence. You keep the copyright in your work, and
+   your contribution stays available under the AGPL-3.0 regardless.
+
+Confirm this by signing off each commit with `git commit -s`, which adds a `Signed-off-by:` line
+with your name and email.
 
 ## Building and testing
 
