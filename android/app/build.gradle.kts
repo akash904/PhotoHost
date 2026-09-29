@@ -31,8 +31,10 @@ android {
         applicationId = "io.github.akash904.photohost"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = "0.1-m0"
+        // versionCode = major * 10000 + minor * 100 + patch, so it always rises with the name and
+        // the Play Store, which refuses an update with a lower code, never has to be argued with.
+        versionCode = 900
+        versionName = "0.9.0"
     }
 
     signingConfigs {

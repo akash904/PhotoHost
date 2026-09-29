@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "io.github.akash904.photohost"
-version = "0.1-m0"
+version = "0.9.0"
 
 // Bytecode for 21, built by whatever JDK runs Gradle (Android Studio's JBR 25 on the dev machine).
 // 21 rather than 25 so the packaged runtime can be any current LTS without a rebuild.
@@ -90,7 +90,7 @@ dependencies {
  * MAJOR.MINOR.PATCH, because jpackage and the Store both require it, and it must only ever go up:
  * an installer with a lower version will not upgrade over a higher one.
  */
-val appVersion = "0.2.0"
+val appVersion = "0.9.0"
 
 val packagingJdk = javaToolchains.launcherFor {
     languageVersion.set(JavaLanguageVersion.of(25))

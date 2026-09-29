@@ -670,7 +670,7 @@ class HttpServer(
         val cap = runCatching { store.capacity() }.getOrNull()
         return HealthDto(
             ok = true,
-            version = "0.3-index",
+            version = "0.9.0",
             uptimeS = (System.currentTimeMillis() - startedAt) / 1000,
             backend = store.kind.name,
             label = store.label,
