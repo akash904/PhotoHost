@@ -808,14 +808,22 @@ fun SettingsScreen(
         )
 
         // ---------------------------------------------------------------- advanced
-        SectionHeader("Advanced")
-        SettingsCard {
-            SettingsRow(
-                title = "Diagnostics",
-                subtitle = "Storage probes, throughput tests and logs",
-                value = "›",
-                onClick = { context.startActivity(Intent(context, ProbeActivity::class.java)) },
-            )
+        // Development builds only. The probes write test files to the library's storage, some of
+        // them until it is nearly full, and speak in adb commands: tools for whoever is building
+        // the app, not controls for someone using it.
+        val debuggable = remember {
+            (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        }
+        if (debuggable) {
+            SectionHeader("Advanced")
+            SettingsCard {
+                SettingsRow(
+                    title = "Diagnostics",
+                    subtitle = "Storage probes, throughput tests and logs (development builds only)",
+                    value = "›",
+                    onClick = { context.startActivity(Intent(context, ProbeActivity::class.java)) },
+                )
+            }
         }
     }
 }

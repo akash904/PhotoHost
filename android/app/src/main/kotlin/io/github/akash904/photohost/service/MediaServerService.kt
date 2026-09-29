@@ -28,7 +28,6 @@ import io.github.akash904.photohost.jobs.ScanHandler
 import io.github.akash904.photohost.jobs.ThumbnailHandler
 import io.github.akash904.photohost.media.ThumbnailCache
 import io.github.akash904.photohost.media.ThumbnailGenerator
-import io.github.akash904.photohost.probe.ProbeActivity
 import io.github.akash904.photohost.server.Auth
 import io.github.akash904.photohost.server.HttpServer
 import io.github.akash904.photohost.server.CertStore
@@ -429,8 +428,13 @@ class MediaServerService : Service() {
     }
 
     private fun buildNotification(text: String): Notification {
+        // The app itself, brought forward as the launcher would: a phone that hosts a library opens
+        // on its Server tab. This used to open the developer diagnostics, so tapping the ongoing
+        // "serving" notification dropped anyone hosting a library into storage probes.
+        val launch = packageManager.getLaunchIntentForPackage(packageName)
+            ?: Intent(this, io.github.akash904.photohost.ui.MainActivity::class.java)
         val open = PendingIntent.getActivity(
-            this, 0, Intent(this, ProbeActivity::class.java),
+            this, 0, launch,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val stop = PendingIntent.getService(
