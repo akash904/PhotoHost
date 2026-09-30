@@ -4,8 +4,16 @@
 library you run yourself, browse it from your other phones and any web browser, and reach it from
 anywhere through Tailscale. No cloud account, no subscription, nothing leaves your devices.
 
-<!-- Screenshots go here: the phone's library grid, the web page, and the Windows window.
-     Planned location: docs/screenshots/. -->
+<p align="center">
+  <img src="docs/screenshots/android-library.png" width="250" alt="The library grid on an Android phone, grouped by day, with a month rail">
+  <img src="docs/screenshots/android-viewer.png" width="250" alt="One photo open full-screen, with favourite, share and info buttons">
+  <img src="docs/screenshots/android-backup.png" width="250" alt="Backup settings: back up now, pick photos, target library, free up space, Wi-Fi only">
+</p>
+<p align="center">
+  <img src="docs/screenshots/web-library.png" width="760" alt="The same library in a web browser">
+</p>
+
+<sub>The pictures in these screenshots are computer-generated placeholders, not real photos.</sub>
 
 > **Status: 0.9.0, early but working.** PhotoHost is used daily by its author on Android phones and a
 > Windows PC. Expect rough edges, and keep a second copy of anything irreplaceable.
