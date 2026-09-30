@@ -1,0 +1,36 @@
+PhotoHost keeps your photo library on devices you own. Turn an old phone or your Windows PC into a library, back up your phone's photos and videos to it, and browse them from your other phones or any web browser. There is no cloud account and no subscription, and your photos never pass through anyone else's server.
+
+HOST A LIBRARY ON A PHONE
+• Keep the library in the app's storage, or in a folder you choose on the phone or on a USB drive, which stays put even if the app is uninstalled.
+• Change where it lives at any time: the photos move across, and each one is checked before the original is removed.
+• The phone serves the library to your other devices over your home Wi-Fi.
+
+BACK UP YOUR PHONE
+• Automatic backup of the folders you choose, on Wi-Fi only if you like.
+• Or pick exactly which photos to send.
+• Photos are matched by their content, so nothing is uploaded twice, and interrupted uploads resume where they stopped.
+
+BROWSE YOUR LIBRARY
+• A fast timeline grid grouped by day, with a month rail for jumping across years.
+• Full-screen viewer with zoom, video playback, favourites and trash.
+• HEIC photos and videos included.
+• Share one photo or a whole selection to any app, in full quality.
+• The same library works in any web browser on your network.
+
+FREE UP SPACE
+• Remove photos from your phone once the library holds them safely.
+• You see every photo before anything is removed, the last 30 days are kept by default, and each photo is checked with the library at that moment.
+• Removed photos go to your phone's trash first, so a mistake can be undone.
+
+PRIVATE BY DESIGN
+• Pairing is by QR code. Every device needs the library's key, and connections are encrypted with a certificate pinned when you pair.
+• Away from home, use Tailscale to reach your library without opening anything to the internet.
+• No analytics, no ads, no tracking. The app sends nothing to the developer.
+
+A WINDOWS PC CAN BE A LIBRARY TOO
+The free PhotoHost app for Windows serves a folder of your choice from the system tray, and this app browses and backs up to it exactly as it does to a phone.
+
+OPEN SOURCE
+PhotoHost is open source under the AGPL-3.0 licence. Source code, the Windows app and documentation: github.com/akash904/PhotoHost
+
+PhotoHost is a young project and is used every day by its developer. Keep a second copy of anything irreplaceable: a single library is a single copy.
