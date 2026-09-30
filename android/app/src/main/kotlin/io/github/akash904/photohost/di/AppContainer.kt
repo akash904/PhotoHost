@@ -124,6 +124,8 @@ class AppContainer private constructor(context: Context) {
                         cacheStrategy = { ImageOnlyCacheStrategy },
                     ),
                 )
+                // Thumbnails the server has not made yet are asked for again; see NotReadyRetry.
+                add(io.github.akash904.photohost.net.NotReadyRetry())
                 // This phone's own photos and videos, for the backup picker; see DeviceThumbs.kt.
                 add(io.github.akash904.photohost.media.DeviceThumbFetcher.Factory())
                 add(io.github.akash904.photohost.media.DeviceThumbKeyer())
