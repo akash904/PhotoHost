@@ -223,7 +223,14 @@ class LibraryApi(
         }
 
         val (secure, plain) = candidates.partition { it.startsWith("https://", ignoreCase = true) }
-        val found = firstAnswering(secure) ?: firstAnswering(plain)
+        // When only a plain address answers, the encrypted ones get one more try before settling
+        // for it. The usual reason they missed is a server phone that was asleep: its Wi-Fi was in
+        // power save, the first connection spent the probe's 2.5s waking it, and the plain probe
+        // that followed found it awake and answered in milliseconds -- so the app ran unencrypted
+        // for as long as that address stayed cached. The retry costs nothing in that case, and at
+        // most one probe timeout when the TLS side really is down.
+        val found = firstAnswering(secure)
+            ?: firstAnswering(plain)?.let { plainWinner -> firstAnswering(secure) ?: plainWinner }
         if (found != null) {
             failedSweeps = 0
             activeBase = found
@@ -299,8 +306,9 @@ class LibraryApi(
         val winner = CompletableDeferred<String?>()
         val probes = group.map { candidate ->
             launch {
-                if (reachable(candidate)) winner.complete(candidate)
-                else android.util.Log.i("photohost", "no answer from $candidate")
+                val failure = probe(candidate)
+                if (failure == null) winner.complete(candidate)
+                else android.util.Log.i("photohost", "no answer from $candidate ($failure)")
             }
         }
         launch {
@@ -312,7 +320,12 @@ class LibraryApi(
         result
     }
 
-    private suspend fun reachable(base: String): Boolean = try {
+    /**
+     * Null when [base] answers, otherwise why it did not: the exception class, or the HTTP status.
+     * The reason is logged because "no answer" alone could not tell a sleeping server's slow first
+     * connection from a refused one, and it took guesswork to see which was happening.
+     */
+    private suspend fun probe(base: String): String? = try {
         val r = client.get("$base/health") {
             // The connect timeout is the one that matters, and it has to be overridden explicitly:
             // the shared client allows ten seconds, which is right for a request that is going to
@@ -325,13 +338,13 @@ class LibraryApi(
                 socketTimeoutMillis = 2_500
             }
         }
-        r.status.isSuccess()
+        if (r.status.isSuccess()) null else "HTTP ${r.status.value}"
     } catch (c: kotlinx.coroutines.CancellationException) {
         // A losing probe in a race, not an unreachable address: rethrown, so it neither counts as
         // "no answer" nor keeps its coroutine running.
         throw c
     } catch (t: Throwable) {
-        false
+        t.javaClass.simpleName
     }
 
     /**
