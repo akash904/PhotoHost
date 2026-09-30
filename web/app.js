@@ -232,12 +232,13 @@ function buildRows(items, containerWidth, target) {
 
     // A full row is always justified to the exact width. The trailing row of a day needs judgement:
     // stretching one lone photo across the screen looks absurd, but leaving a nearly-full row short
-    // makes the whole grid look broken. So justify it once it is at least 40% full, capped so a
-    // single wide photo cannot balloon.
+    // makes the whole grid look broken. So justify it only once it is at least 75% full, which
+    // keeps it within a third of the other rows' height. The threshold was 40%, with a 1.7x cap,
+    // and a day ending on a 60%-full row drew it nearly twice as tall as the rows above it.
     let h = justified;
     if (isLast) {
       const fill = (ratioSum * target) / avail;
-      h = fill >= 0.4 ? Math.min(justified, target * 1.7) : target;
+      h = fill >= 0.75 ? justified : target;
     }
     rows.push(current.map((c) => ({ item: c.item, w: Math.floor(c.ratio * h), h: Math.floor(h) })));
     current = [];

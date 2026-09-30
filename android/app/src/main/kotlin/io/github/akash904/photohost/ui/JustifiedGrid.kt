@@ -75,13 +75,14 @@ object JustifiedGrid {
 
             // A full row always fills the width. The trailing row of a day needs judgement:
             // stretching one lone photo across the screen looks absurd, but leaving a nearly-full
-            // row short makes the grid look broken. Justify from 40% full, capped so a single wide
-            // photo cannot balloon.
+            // row short makes the grid look broken. Justify only from 75% full, which keeps it
+            // within a third of the other rows' height; from 40% with a 1.7x cap, a day ending on
+            // a 60%-full row drew it nearly twice as tall as the rows above. Same rule as web/.
             val height = if (!isLast) {
                 justified
             } else {
                 val fill = (ratioSum * targetHeight) / avail
-                if (fill >= 0.4f) minOf(justified, targetHeight * 1.7f) else targetHeight.toFloat()
+                if (fill >= 0.75f) justified else targetHeight.toFloat()
             }
 
             rows += GridEntry.PhotoRow(
