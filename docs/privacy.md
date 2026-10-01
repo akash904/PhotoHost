@@ -1,6 +1,6 @@
 # PhotoHost privacy policy
 
-*Last updated: 29 September 2026*
+*Last updated: 1 October 2026*
 
 PhotoHost is open-source software for keeping your photo library on your own devices. It is made
 by Akash Verma. There is no PhotoHost company server, account, advertising or analytics: the
@@ -51,4 +51,4 @@ PhotoHost is not directed at children and collects no information from anyone.
 ## Changes and contact
 
 Changes to this policy are published in this file, in the project's public repository. Questions:
-open an issue at the project's GitHub repository.
+email photohost.av@gmail.com, or open an issue at the project's GitHub repository.
