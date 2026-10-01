@@ -219,6 +219,7 @@ class MediaServerService : Service() {
                 port = port,
                 startedAt = System.currentTimeMillis(),
                 backend = store.kind.name,
+                location = store.location,
                 urls = urls,
                 token = token,
                 httpsUrl = tls?.let { _ -> secureUrl(port) },
@@ -402,7 +403,9 @@ class MediaServerService : Service() {
             setReferenceCounted(false)
             acquire()
         }
-        val wm = applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
+        // Absent on a device with no Wi-Fi at all (an Ethernet-only box), which the manifest allows:
+        // there is no radio to keep awake, and a cast to WifiManager would stop the server starting.
+        val wm = applicationContext.getSystemService(WIFI_SERVICE) as? WifiManager ?: return
         val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             WifiManager.WIFI_MODE_FULL_LOW_LATENCY
         } else {

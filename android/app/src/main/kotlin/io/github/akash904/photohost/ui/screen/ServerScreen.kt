@@ -102,7 +102,7 @@ fun ServerScreen(prefs: Prefs, server: ServerState.Snapshot, modifier: Modifier 
                             )
                         }
                         Text(
-                            "Photos are kept on ${server.backend.lowercase()} storage",
+                            "Photos are kept in ${server.location}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 6.dp),

@@ -33,8 +33,8 @@ android {
         targetSdk = libs.versions.targetSdk.get().toInt()
         // versionCode = major * 10000 + minor * 100 + patch, so it always rises with the name and
         // the Play Store, which refuses an update with a lower code, never has to be argued with.
-        versionCode = 900
-        versionName = "0.9.0"
+        versionCode = 901
+        versionName = "0.9.1"
     }
 
     signingConfigs {
@@ -63,6 +63,9 @@ android {
 
     buildFeatures {
         compose = true
+        // For BuildConfig.VERSION_NAME, so /health reports the version that was actually built
+        // instead of a string someone had to remember to change.
+        buildConfig = true
     }
 
     // largeHeap is deliberately OFF so bitmap/fd leaks surface early instead of being papered over.

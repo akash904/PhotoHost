@@ -3,6 +3,10 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+    <!-- ACCESS_WIFI_STATE would otherwise imply Wi-Fi is required, hiding the app from devices
+         that reach the network over Ethernet only. The server holds a Wi-Fi lock only when there
+         is Wi-Fi to hold. -->
+    <uses-feature android:name="android.hardware.wifi" android:required="false" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />

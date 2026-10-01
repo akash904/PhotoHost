@@ -22,8 +22,15 @@ interface LibraryStore {
 
     val kind: StoreKind
 
-    /** Human label for the UI, e.g. "Internal storage" or "USB 1234-5678". */
+    /** Short label, e.g. "Internal storage" or "USB 1234-5678"; used in the server notification. */
     val label: String
+
+    /**
+     * Where the photos are, in the words the Storage card uses: "App storage", or a folder such as
+     * "Phone storage › Pictures/PhotoHost". What any screen shows a person, rather than [kind],
+     * whose names (INTERNAL, SAF) are code and once leaked onto the screen as "saf storage".
+     */
+    val location: String get() = label
 
     /** False when the volume is gone (drive unplugged). Jobs go BLOCKED, not FAILED. */
     val isMounted: Boolean
@@ -51,6 +58,17 @@ interface LibraryStore {
 }
 
 enum class StoreKind { INTERNAL, SAF }
+
+/**
+ * "Phone storage › Pictures/PhotoHost" or "USB 1234-5678 › Photos", from a SAF tree document id
+ * such as "primary:Pictures/PhotoHost". One function, so every screen names a folder the same way.
+ */
+fun describeTreeDocId(treeDocId: String): String {
+    val volume = treeDocId.substringBefore(':')
+    val path = treeDocId.substringAfter(':', "")
+    val where = if (volume == "primary") "Phone storage" else "USB $volume"
+    return if (path.isEmpty()) where else "$where › $path"
+}
 
 data class StoreEntry(
     /** Path relative to the store root, '/'-separated, no leading slash. */

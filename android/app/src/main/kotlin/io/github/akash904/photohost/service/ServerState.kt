@@ -17,7 +17,10 @@ object ServerState {
         val running: Boolean = false,
         val port: Int = 8080,
         val startedAt: Long = 0L,
+        /** The store kind, for diagnostics. Screens show [location]. */
         val backend: String = "",
+        /** Where the photos are, as a person would say it; see LibraryStore.location. */
+        val location: String = "",
         val urls: List<String> = emptyList(),
         val token: String = "",
         val heartbeats: Int = 0,

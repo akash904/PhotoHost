@@ -34,6 +34,7 @@ import io.github.akash904.photohost.storage.MoveState
 import io.github.akash904.photohost.storage.SafStore
 import io.github.akash904.photohost.storage.StorageReadiness
 import io.github.akash904.photohost.storage.StoreKind
+import io.github.akash904.photohost.storage.describeTreeDocId
 import io.github.akash904.photohost.storage.storageReadiness
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -77,14 +78,9 @@ private fun prepareFolder(context: android.content.Context, uri: Uri): String? {
 }
 
 /** "Phone storage › Pictures/PhotoHost" or "USB 1234-5678 › Photos", from a tree URI. */
-fun describeFolder(treeUri: Uri?): String? {
-    val docId = treeUri?.let { runCatching { DocumentsContract.getTreeDocumentId(it) }.getOrNull() }
-        ?: return null
-    val volume = docId.substringBefore(':')
-    val path = docId.substringAfter(':', "")
-    val where = if (volume == "primary") "Phone storage" else "USB $volume"
-    return if (path.isEmpty()) where else "$where › $path"
-}
+fun describeFolder(treeUri: Uri?): String? =
+    treeUri?.let { runCatching { DocumentsContract.getTreeDocumentId(it) }.getOrNull() }
+        ?.let(::describeTreeDocId)
 
 private fun describe(backend: String, tree: Uri?): String =
     if (backend == StoreKind.SAF.name) describeFolder(tree) ?: "the folder you chose" else "app storage"
@@ -116,6 +112,9 @@ fun rememberLocationChanger(prefs: Prefs, onChanged: () -> Unit): LocationChange
     fun apply(backend: String, tree: Uri?) {
         prefs.backend = backend
         if (tree != null) prefs.treeUri = tree
+        // The last move's result describes the location just left; kept on screen it read as
+        // though the new one had been moved into as well.
+        MoveState.update { it.copy(message = null, failed = false) }
         onChanged()
     }
 

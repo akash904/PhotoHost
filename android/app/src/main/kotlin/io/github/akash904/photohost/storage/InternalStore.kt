@@ -29,6 +29,7 @@ class InternalStore(context: Context) : LibraryStore {
 
     override val kind = StoreKind.INTERNAL
     override val label: String get() = "Internal storage"
+    override val location: String get() = "App storage"
     override val isMounted: Boolean get() = root.isDirectory
     override val isWritable: Boolean get() = root.canWrite()
 

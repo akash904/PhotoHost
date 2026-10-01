@@ -65,6 +65,7 @@ class SafStore(
     override val kind = StoreKind.SAF
     // "primary" is the phone's own shared storage, which a folder can be picked on too.
     override val label: String get() = if (volumeKey == "primary") "Phone folder" else "USB $volumeKey"
+    override val location: String get() = describeTreeDocId(treeDocId)
     override val isWritable: Boolean
         get() = resolver.persistedUriPermissions.any { it.uri == treeUri && it.isWritePermission }
 

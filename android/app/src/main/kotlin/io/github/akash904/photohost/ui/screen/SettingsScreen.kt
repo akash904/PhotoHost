@@ -641,8 +641,17 @@ fun SettingsScreen(
                 }
                 if (server.running) {
                     server.urls.forEach { MonoLine(it) }
+                    // The heartbeat count and store kind are for whoever is debugging the server;
+                    // shown to everyone they read as "1 heartbeats · serving SAF".
+                    val debuggable = remember {
+                        (context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+                    }
                     Text(
-                        text = "${server.heartbeats} heartbeats · serving ${server.backend}",
+                        text = if (debuggable) {
+                            "Serving ${server.location} · ${server.heartbeats} heartbeats (${server.backend})"
+                        } else {
+                            "Serving ${server.location}"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

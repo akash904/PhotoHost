@@ -675,7 +675,7 @@ class HttpServer(
         val cap = runCatching { store.capacity() }.getOrNull()
         return HealthDto(
             ok = true,
-            version = "0.9.0",
+            version = io.github.akash904.photohost.BuildConfig.VERSION_NAME,
             uptimeS = (System.currentTimeMillis() - startedAt) / 1000,
             backend = store.kind.name,
             label = store.label,
