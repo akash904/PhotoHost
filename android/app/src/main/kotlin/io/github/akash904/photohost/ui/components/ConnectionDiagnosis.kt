@@ -40,6 +40,16 @@ fun diagnose(context: Context, knownAddresses: List<String>): Diagnosis {
     }
 
     return when {
+        // Checked first: without it no network fix can help, and the timeouts it causes look
+        // exactly like a wrong Wi-Fi.
+        !io.github.akash904.photohost.core.LocalNetworkAccess.granted(context) -> Diagnosis(
+            headline = "PhotoHost is not allowed on your local network",
+            steps = listOf(
+                "Tap Allow below and choose Allow, so PhotoHost can reach the phone or PC that keeps your photos.",
+                "If Android no longer asks, open Settings › Apps › PhotoHost › Permissions and allow local network access.",
+            ),
+        )
+
         !online -> Diagnosis(
             headline = "This phone has no network",
             steps = listOf(

@@ -730,8 +730,23 @@ private fun Unreachable(
 ) {
     val context = LocalContext.current
     var showDetail by remember { mutableStateOf(false) }
+    // Bumped when the local-network permission answer comes back, so the diagnosis is redone.
+    var permissionKey by remember { mutableStateOf(0) }
     // Recomputed on each retry, since the whole point is that the user has just changed something.
-    val diagnosis = remember(knownAddresses, retrying) { diagnose(context, knownAddresses) }
+    val diagnosis = remember(knownAddresses, retrying, permissionKey) { diagnose(context, knownAddresses) }
+    val needsLocalNetwork = remember(retrying, permissionKey) {
+        !io.github.akash904.photohost.core.LocalNetworkAccess.granted(context)
+    }
+    // Once Android has been refused, it stops showing its prompt and the request returns "denied"
+    // at once; the second tap therefore opens the app's settings page, where it can still be granted.
+    var askedOnce by remember { mutableStateOf(false) }
+    val askLocalNetwork = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        askedOnce = true
+        permissionKey++
+        if (granted) onRetry()
+    }
 
     Centered {
         Column(
@@ -773,8 +788,26 @@ private fun Unreachable(
                 }
             }
 
+            if (needsLocalNetwork) {
+                Button(
+                    onClick = {
+                        if (!askedOnce) {
+                            askLocalNetwork.launch(io.github.akash904.photohost.core.LocalNetworkAccess.PERMISSION)
+                        } else {
+                            context.startActivity(
+                                android.content.Intent(
+                                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    android.net.Uri.fromParts("package", context.packageName, null),
+                                ),
+                            )
+                        }
+                    },
+                    modifier = Modifier.padding(top = 8.dp),
+                ) { Text(if (askedOnce) "Open app settings" else "Allow") }
+            }
+
             Button(
-                onClick = onRetry,
+                onClick = { permissionKey++; onRetry() },
                 enabled = !retrying,
                 modifier = Modifier.padding(top = 8.dp),
             ) {

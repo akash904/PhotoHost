@@ -92,6 +92,21 @@ private fun PhotoHostApp() {
     val requestMedia = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { }
+    // Android 17+: every library is reached over the local network; see LocalNetworkAccess.
+    val requestLocalNetwork = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { }
+    fun askLocalNetworkIfNeeded() {
+        if (!io.github.akash904.photohost.core.LocalNetworkAccess.granted(context)) {
+            requestLocalNetwork.launch(io.github.akash904.photohost.core.LocalNetworkAccess.PERMISSION)
+        }
+    }
+    // Once per launch, and only once there is a library to reach or serve: asking a phone that has
+    // not been set up yet would be asking before it is clear why.
+    LaunchedEffect(Unit) {
+        val prefs = container.prefs
+        if (prefs.onboarded && (prefs.hostsLibrary() || prefs.libraries().isNotEmpty())) askLocalNetworkIfNeeded()
+    }
 
     // Asked once, at first launch, with an explanation first. Requesting it later as a side effect
     // of flipping a switch conflates two decisions -- "may this app read my photos" and "start
@@ -336,6 +351,9 @@ private fun PhotoHostApp() {
                     if (target == null || (target.isLocal && !prefs.hostsLibrary())) {
                         prefs.backupLibraryId = paired.id
                     }
+                    // The moment the reason is obvious: a library was just paired, and reaching it
+                    // is the next thing that happens.
+                    askLocalNetworkIfNeeded()
                     libraryVm.refresh()
                     setupKey++
                     setupRequested = false
