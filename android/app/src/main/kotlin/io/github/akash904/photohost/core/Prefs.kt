@@ -153,8 +153,20 @@ class Prefs(context: Context) {
 
     fun library(id: String): Library? = resolve(id)
 
-    private fun resolve(id: String): Library? =
-        if (id == Library.LOCAL_ID) localLibrary() else remoteLibraries().firstOrNull { it.id == id }?.toLibrary()
+    /**
+     * "This phone" resolves only on a phone that keeps a library. It used to resolve everywhere,
+     * and "local" is the default active id -- so a phone that only views, left with that id (fresh
+     * install, last paired library removed, hosting tried and dropped), sent every request to
+     * 127.0.0.1, where nothing serves, while the switcher, not finding "local" among the
+     * libraries it lists, showed the first paired one's name above the error. Seen on a Pixel:
+     * "Library at 192.168.1.51" over "Failed to connect to /127.0.0.1:8080". Unresolved, the
+     * active library falls through to the first paired one and backup to none, which the backup
+     * worker reports instead of uploading to itself.
+     */
+    private fun resolve(id: String): Library? = when {
+        id == Library.LOCAL_ID -> localLibrary().takeIf { hostsLibrary() }
+        else -> remoteLibraries().firstOrNull { it.id == id }?.toLibrary()
+    }
 
     private fun LibraryProfile.toLibrary() = Library(id, name, url, token, fingerprint, candidates)
 

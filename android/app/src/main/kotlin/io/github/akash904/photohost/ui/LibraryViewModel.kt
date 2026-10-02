@@ -3,7 +3,6 @@ package io.github.akash904.photohost.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import io.github.akash904.photohost.core.DeviceRole
 import io.github.akash904.photohost.core.Library
 import io.github.akash904.photohost.core.LibraryProfile
 import io.github.akash904.photohost.di.AppContainer
@@ -78,8 +77,12 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
      * library it had just paired with. A phone that knows where its library is has answered the
      * question, whatever the bookkeeping says.
      */
-    private fun configured() =
-        container.prefs.role != DeviceRole.UNSET || container.prefs.serverUrl != null
+    /**
+     * Whether there is a library to show: this phone's own, or a paired one. Having chosen a role
+     * is not enough -- a phone set to view whose only library was removed has none, and loading
+     * anyway fell back to this phone's address and showed "connection refused" from 127.0.0.1.
+     */
+    private fun configured() = container.prefs.libraries().isNotEmpty()
 
     init {
         refresh()
@@ -208,7 +211,7 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
             // A library carried over from before there was a list still has its placeholder name;
             // the first successful connection gives it a real one. A no-op once named or renamed.
             container.prefs.remoteLibraries()
-                .firstOrNull { it.id == container.prefs.activeLibraryId }
+                .firstOrNull { it.id == container.prefs.activeLibrary().id }
                 ?.let { runCatching { nameFromServer(it) } }
             // Re-read after the refresh: this is the call that discovers the addresses beyond the
             // one this client paired against, so before it the list is just that single address.

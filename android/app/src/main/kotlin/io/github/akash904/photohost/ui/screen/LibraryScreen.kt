@@ -256,10 +256,12 @@ fun LibraryScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier.padding(horizontal = 28.dp),
                     ) {
-                        Text("Not set up yet", style = MaterialTheme.typography.titleMedium)
+                        // Also reached by a phone set to view whose last library was removed, so it
+                        // describes having no library rather than never having been set up.
+                        Text("No library yet", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            "This phone has not been told whether it keeps your photos or views " +
-                                "a library on another phone or PC.",
+                            "Keep your photos on this phone, or connect to a library on another " +
+                                "phone or PC.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
