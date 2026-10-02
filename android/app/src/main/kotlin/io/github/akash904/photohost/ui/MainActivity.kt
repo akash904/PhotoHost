@@ -8,7 +8,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -277,7 +281,7 @@ private fun PhotoHostApp() {
             DeviceRole.HOST -> !server.running
             DeviceRole.VIEWER -> false
         }
-        if (!showIntro && (setupRequested || (!setupDismissed && needsSetup))) {
+        if (!showIntro && (setupRequested || (!setupDismissed && needsSetup))) Overlay {
             SetupScreen(
                 prefs = container.prefs,
                 server = server,
@@ -304,7 +308,7 @@ private fun PhotoHostApp() {
             )
         }
 
-        if (trashOpen) {
+        if (trashOpen) Overlay {
             TrashScreen(
                 api = libraryVm.api,
                 onChanged = { libraryVm.refresh() },
@@ -314,7 +318,7 @@ private fun PhotoHostApp() {
 
         // Drawn over the scaffold rather than as a route, so the grid keeps its scroll position and
         // closing the viewer is instant.
-        if (showingQr) {
+        if (showingQr) Overlay {
             PairQrScreen(
                 urls = server.urls,
                 token = container.prefs.token(),
@@ -325,7 +329,7 @@ private fun PhotoHostApp() {
             )
         }
 
-        if (scanningQr) {
+        if (scanningQr) Overlay(background = Color.Black) {
             ScanQrScreen(
                 prefs = container.prefs,
                 onPaired = { paired ->
@@ -371,7 +375,7 @@ private fun PhotoHostApp() {
             )
         }
 
-        if (picking) {
+        if (picking) Overlay {
             DevicePickerScreen(
                 db = container.db,
                 prefs = container.prefs,
@@ -379,11 +383,11 @@ private fun PhotoHostApp() {
             )
         }
 
-        if (freeingSpace) {
+        if (freeingSpace) Overlay {
             FreeUpSpaceScreen(onClose = { freeingSpace = false })
         }
 
-        viewerId?.let { id ->
+        viewerId?.let { id -> Overlay(background = Color.Black) {
             ViewerScreen(
                 items = library.items,
                 startId = id,
@@ -392,8 +396,30 @@ private fun PhotoHostApp() {
                 onNearEnd = { libraryVm.loadMore() },
                 onFavoriteChanged = { assetId, fav -> libraryVm.setFavorite(assetId, fav) },
             )
-        }
+        } }
     }
+}
+
+/**
+ * A full-screen layer drawn over the tabs, kept clear of the status bar, navigation bar and keyboard.
+ *
+ * Android 15+ draws an app edge to edge whether it asks or not, so anything not inside the
+ * Scaffold -- which handles this for the tabs -- lays out under the system bars. On a Pixel the
+ * picker's Cancel / Clear / Back up row sat under the status bar, where taps go to the system and
+ * not the app; the Android 13 phones it was built on still reserved that space themselves. The
+ * background still fills behind the bars, so they sit on the overlay's colour, not the grid.
+ */
+@Composable
+private fun Overlay(
+    background: Color = MaterialTheme.colorScheme.background,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(background)
+            .safeDrawingPadding(),
+    ) { content() }
 }
 
 /**
