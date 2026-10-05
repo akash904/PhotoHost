@@ -671,7 +671,8 @@ class HttpServer(
         val cap = runCatching { store.capacity() }.getOrNull()
         return HealthDto(
             ok = true,
-            version = "0.9.0",
+            // Set by the jpackage launcher from build.gradle.kts' appVersion; absent in a Gradle run.
+            version = System.getProperty("jpackage.app-version") ?: "dev",
             uptimeS = (System.currentTimeMillis() - startedAt) / 1000,
             backend = store.kind.name,
             label = store.label,

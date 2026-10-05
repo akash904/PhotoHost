@@ -8,8 +8,9 @@
 
   Three things differ from the setup .exe, each because a package works differently (see Packaged.kt):
     - Start at sign-in is the StartupTask below, off until the user switches it on in
-      Settings > Apps > Startup. It runs PhotoHostAtSignIn.exe, the same app with --minimized,
-      because a StartupTask cannot pass arguments.
+      Settings > Apps > Startup. It runs PhotoHostAtSignIn.exe, the same app started in the tray
+      (see at-sign-in.properties), because a StartupTask cannot pass arguments.
+      (No double hyphens in this comment: XML forbids them, and makepri rejects the file.)
     - The firewall rule is declared here and added at install, for both executables, TCP only, all
       network types (Tailscale counts as public).
     - The data folder (%LOCALAPPDATA%\PhotoHost) is redirected into the package and removed on
