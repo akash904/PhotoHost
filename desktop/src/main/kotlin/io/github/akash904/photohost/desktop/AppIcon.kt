@@ -113,8 +113,34 @@ object AppIcon {
     }
 }
 
-/** Build step: `AppIconKt <output.ico> [preview.png]`. Run by the generateIcon Gradle task. */
+/**
+ * The Store package's logos, named with the qualifiers Windows' resource index (resources.pri)
+ * resolves: scale-N for the Start tile and Store, targetsize-N for the taskbar and Explorer, and
+ * altform-unplated so the taskbar shows the rounded tile itself, not on a block of accent colour.
+ */
+fun writeMsixAssets(dir: File) {
+    dir.mkdirs()
+    fun put(name: String, size: Int) = ImageIO.write(AppIcon.render(size), "png", File(dir, name))
+    for ((scale, factor) in listOf(100 to 1.0, 200 to 2.0)) {
+        put("StoreLogo.scale-$scale.png", (50 * factor).toInt())
+        put("Square150x150Logo.scale-$scale.png", (150 * factor).toInt())
+        put("Square44x44Logo.scale-$scale.png", (44 * factor).toInt())
+    }
+    for (s in listOf(16, 24, 32, 48, 256)) {
+        put("Square44x44Logo.targetsize-$s.png", s)
+        put("Square44x44Logo.targetsize-${s}_altform-unplated.png", s)
+    }
+}
+
+/**
+ * Build step: `AppIconKt <output.ico> [preview.png]`, run by the generateIcon Gradle task, or
+ * `AppIconKt --msix-assets <dir>` for the Store package.
+ */
 fun main(args: Array<String>) {
+    if (args.getOrNull(0) == "--msix-assets") {
+        writeMsixAssets(File(args.getOrNull(1) ?: error("usage: --msix-assets <dir>")))
+        return
+    }
     val ico = File(args.getOrNull(0) ?: error("usage: <output.ico> [preview.png]"))
     AppIcon.writeIco(ico)
     args.getOrNull(1)?.let { ImageIO.write(AppIcon.render(512), "png", File(it)) }

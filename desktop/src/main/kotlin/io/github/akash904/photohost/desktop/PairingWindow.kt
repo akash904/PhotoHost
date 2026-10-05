@@ -63,7 +63,15 @@ class PairingWindow(
     private var watchingImport: Job? = null
 
     private val autostart = javax.swing.JCheckBox("Start PhotoHost when I sign in to Windows").apply {
-        if (Autostart.supported) {
+        if (Autostart.managedByWindows) {
+            isSelected = Autostart.isEnabled()
+            toolTipText = "Opens Windows Settings > Apps > Startup, where PhotoHost is switched on or off."
+            addActionListener { Autostart.setEnabled(isSelected); isSelected = Autostart.isEnabled() }
+            // Coming back from Settings: show what the user chose there.
+            frame.addWindowFocusListener(object : java.awt.event.WindowAdapter() {
+                override fun windowGainedFocus(e: java.awt.event.WindowEvent) { isSelected = Autostart.isEnabled() }
+            })
+        } else if (Autostart.supported) {
             isSelected = Autostart.isEnabled()
             toolTipText = "Starts quietly in the tray, so the library is always available to your phones."
             addActionListener {

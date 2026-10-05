@@ -90,7 +90,7 @@ dependencies {
  * MAJOR.MINOR.PATCH, because jpackage and the Store both require it, and it must only ever go up:
  * an installer with a lower version will not upgrade over a higher one.
  */
-val appVersion = "0.9.0"
+val appVersion = "0.9.1"
 
 val packagingJdk = javaToolchains.launcherFor {
     languageVersion.set(JavaLanguageVersion.of(25))
@@ -118,13 +118,9 @@ val generateIcon = tasks.register<JavaExec>("generateIcon") {
     outputs.file(iconFile)
 }
 
-val packageExe = tasks.register<Exec>("packageExe") {
-    group = "distribution"
-    description = "Builds build/package/PhotoHost/PhotoHost.exe with a bundled Java runtime."
-    dependsOn(tasks.installDist, cleanPackage, generateIcon)
-
+/** jpackage's app-image arguments, shared by the plain folder and the Store package's image. */
+fun Exec.jpackageAppImage(outDir: Provider<Directory>) {
     val libDir = layout.buildDirectory.dir("install/${project.name}/lib")
-    val outDir = layout.buildDirectory.dir("package")
     inputs.dir(libDir)
     outputs.dir(outDir)
 
@@ -149,6 +145,13 @@ val packageExe = tasks.register<Exec>("packageExe") {
     // back, an idle server was observed at 644 MB. Decoding is subsampled, so even a 50 MP photo
     // needs a few tens of MB; 512 MB leaves room for several thumbnails in parallel.
     args("--java-options", "-Xmx512m")
+}
+
+val packageExe = tasks.register<Exec>("packageExe") {
+    group = "distribution"
+    description = "Builds build/package/PhotoHost/PhotoHost.exe with a bundled Java runtime."
+    dependsOn(tasks.installDist, cleanPackage, generateIcon)
+    jpackageAppImage(layout.buildDirectory.dir("package"))
 }
 
 // `gradlew packageInstaller` -> build/installer/PhotoHost-Setup-<version>.exe, an Inno Setup
@@ -185,6 +188,87 @@ tasks.register<Exec>("packageInstaller") {
     )
     if (sign != null) args("/DSign", "/Sphotohost=$sign")
     args(file("packaging/PhotoHost.iss").absolutePath)
+}
+
+// `gradlew packageMsix` -> build/msix/PhotoHost-<version>.msix, for the Microsoft Store. See
+// packaging/msix/AppxManifest.xml for how it differs from the setup .exe. Uploaded unsigned: the Store
+// signs it. Needs the Windows SDK (makeappx, makepri); set WINDOWS_SDK_BIN to its x64 folder if it is
+// not in the usual place.
+
+val msixDir = layout.buildDirectory.dir("msix")
+
+/** The newest Windows SDK's x64 tools folder, as a path, or null when there is none. */
+val windowsSdkBin: String? = providers.environmentVariable("WINDOWS_SDK_BIN").orNull
+    ?: File("C:\\Program Files (x86)\\Windows Kits\\10\\bin")
+        .listFiles { f -> f.name.startsWith("10.") && File(f, "x64\\makeappx.exe").isFile }
+        ?.maxByOrNull { f -> f.name.split('.').joinToString("") { it.padStart(6, '0') } }
+        ?.let { File(it, "x64").absolutePath }
+
+/** Plain values only in task actions: the configuration cache cannot keep references to this script. */
+fun Exec.sdkTool(name: String) {
+    val sdk = windowsSdkBin
+    executable = File(sdk ?: ".", name).absolutePath
+    doFirst {
+        if (sdk == null) throw GradleException("Windows SDK not found: install it, or set WINDOWS_SDK_BIN to the folder holding $name")
+    }
+}
+
+val cleanMsix = tasks.register<Delete>("cleanMsix") {
+    delete(msixDir)
+}
+
+// Its own app image, because only the package carries the second launcher its StartupTask needs.
+val msixImage = tasks.register<Exec>("msixImage") {
+    dependsOn(tasks.installDist, cleanMsix, generateIcon)
+    jpackageAppImage(msixDir.map { it.dir("image") })
+    args("--add-launcher", "PhotoHostAtSignIn=${file("packaging/msix/at-sign-in.properties").absolutePath}")
+}
+
+val msixAssets = tasks.register<JavaExec>("msixAssets") {
+    dependsOn(cleanMsix)
+    classpath = sourceSets.main.get().runtimeClasspath
+    mainClass.set("io.github.akash904.photohost.desktop.AppIconKt")
+    val out = msixDir.map { it.dir("pri/Assets") }
+    args("--msix-assets", out.get().asFile.absolutePath)
+    outputs.dir(out)
+}
+
+val msixLayout = tasks.register<Sync>("msixLayout") {
+    dependsOn(msixImage, msixAssets)
+    into(msixDir.map { it.dir("layout") })
+    from(msixDir.map { it.dir("image/PhotoHost") }) { into("PhotoHost") }
+    from(msixDir.map { it.dir("pri/Assets") }) { into("Assets") }
+    val version = appVersion
+    from("packaging/msix/AppxManifest.xml") { filter { it.replace("@VERSION@", version) } }
+}
+
+// The resource index, so Windows finds the logos by their scale and targetsize qualifiers. Indexes
+// only Assets\ (pri/ holds nothing else), not the thousands of runtime files.
+val msixPri = tasks.register<Exec>("msixPri") {
+    dependsOn(msixLayout)
+    sdkTool("makepri.exe")
+    val layoutDir = msixDir.get().dir("layout").asFile
+    args(
+        "new",
+        "/pr", msixDir.get().dir("pri").asFile.absolutePath,
+        "/cf", file("packaging/msix/priconfig.xml").absolutePath,
+        "/mn", File(layoutDir, "AppxManifest.xml").absolutePath,
+        "/of", File(layoutDir, "resources.pri").absolutePath,
+        "/o",
+    )
+}
+
+tasks.register<Exec>("packageMsix") {
+    group = "distribution"
+    description = "Builds build/msix/PhotoHost-<version>.msix for the Microsoft Store."
+    dependsOn(msixPri)
+    sdkTool("makeappx.exe")
+    args(
+        "pack",
+        "/d", msixDir.get().dir("layout").asFile.absolutePath,
+        "/p", msixDir.get().file("PhotoHost-$appVersion.msix").asFile.absolutePath,
+        "/o",
+    )
 }
 
 // The web page is shared with the phone app and lives once, in web/ at the repository root.

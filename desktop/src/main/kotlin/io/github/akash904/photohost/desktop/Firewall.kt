@@ -32,6 +32,10 @@ private const val TAG = "photohost"
  * counts as public: checking only today's networks would report "fine" at home and break the moment
  * Tailscale came up. The pairing token still guards every request, whichever network it arrives on.
  *
+ * In the Microsoft Store package the rule is declared in the manifest and added at install, so the
+ * button should never be needed there. It still works, but its rule names the versioned install
+ * folder and stops matching at the next update.
+ *
  * Only Windows' own firewall is visible here. A third-party firewall can still block PhotoHost, and
  * a rule that opens a port rather than naming the program is not counted.
  */
