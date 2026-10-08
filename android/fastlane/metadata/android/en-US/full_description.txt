@@ -28,7 +28,7 @@ PRIVATE BY DESIGN
 • No analytics, no ads, no tracking. The app sends nothing to the developer.
 
 A WINDOWS PC CAN BE A LIBRARY TOO
-The free PhotoHost app for Windows serves a folder of your choice from the system tray, and this app browses and backs up to it exactly as it does to a phone.
+The free PhotoHost app for Windows, in the Microsoft Store, serves a folder of your choice from the system tray, and this app browses and backs up to it exactly as it does to a phone.
 
 OPEN SOURCE
 PhotoHost is open source under the AGPL-3.0 licence. Source code, the Windows app and documentation: github.com/akash904/PhotoHost

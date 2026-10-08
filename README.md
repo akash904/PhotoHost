@@ -49,13 +49,17 @@ between them.
 
 ## Install
 
-Downloads are on the [Releases](../../releases) page.
+- **Windows:** get PhotoHost from the
+  [Microsoft Store](https://apps.microsoft.com/detail/9P7J3LXN40NK). It is signed, installs without
+  warnings (also with Smart App Control on), updates itself, and sets up the firewall rule for you.
+  The installer on the [Releases](../../releases) page is the alternative. It is not code-signed,
+  so Windows warns about an unknown publisher (choose *More info*, then *Run anyway*), and with
+  Smart App Control on it will not run at all.
+- **Android:** install the APK from the [Releases](../../releases) page. Google Play is in closed
+  testing.
 
-- **Android:** install the APK. Google Play is planned.
-- **Windows:** run the installer. It is not code-signed yet, so Windows warns about an unknown
-  publisher (choose *More info*, then *Run anyway*), and on a PC with **Smart App Control** turned on
-  it will not run at all. In that case, build it from source (below). A signed release and the
-  Microsoft Store are planned.
+Uninstalling the Store version keeps your photos, which live in the library folder. It removes the
+index and pairing, so after a reinstall the folder is indexed again and phones pair again.
 
 ## Getting started
 
@@ -98,6 +102,7 @@ android/gradlew -p android assembleDebug      # the phone app, needs the Android
 desktop/gradlew -p desktop test               # the desktop server's tests
 desktop/gradlew -p desktop packageExe         # desktop/build/package/PhotoHost/PhotoHost.exe
 desktop/gradlew -p desktop packageInstaller   # the installer, needs Inno Setup 6
+desktop/gradlew -p desktop packageMsix        # the Microsoft Store package, needs the Windows SDK
 ```
 
 On a PC with Smart App Control on, a freshly built `PhotoHost.exe` is blocked;

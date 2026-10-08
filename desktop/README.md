@@ -12,7 +12,11 @@ Range, and the phone's backup protocol. Imports folders or chosen files from the
 tray, optionally at sign-in, one instance at a time, and has an installer. Checked end to end with
 the real phone app.
 
-Not yet: code signing (Smart App Control blocks the unsigned installer), MSIX and the Microsoft Store.
+Published in the [Microsoft Store](https://apps.microsoft.com/detail/9P7J3LXN40NK) as an MSIX
+package (`gradlew packageMsix`, see `packaging/msix/AppxManifest.xml`), which the Store signs. In
+the package, start at sign-in is a StartupTask switched in Settings > Apps > Startup, and the
+firewall rule comes from the manifest. Not yet: code signing for the installer, which Smart App
+Control blocks while it is unsigned.
 
 ## Run the app
 
